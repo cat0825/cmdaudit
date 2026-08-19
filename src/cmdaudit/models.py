@@ -134,6 +134,10 @@ class CommandRecord:
     subcommand: str | None
     command_group: str
     parse_ok: bool
+    #: 确定性占位符替换的结果。比 Drain3 的 template 细：
+    #: Drain3 会把 `npm run build` 与 `npm run typecheck` 聚成 `npm run <*>`，
+    #: 而这两者耗时差一倍以上，候选筛选需要能区分它们。
+    canonical: str = ""
     template: str = ""
     template_id: str = ""
     redacted: bool = False

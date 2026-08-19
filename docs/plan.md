@@ -334,13 +334,39 @@ M1 全量跑完暴露一个事实，它决定了 M2 的结构：
 - 措辞必须是「疑似 / 待验证」，禁止「不必要 / 应删除」这类判决式表述
 - 每条必须带 `verification.design`，给不出验证方式的候选直接丢弃
 
-### 5.4 M3 停止条件
+### 5.4 四条候选规则
 
-- [ ] `candidates.json` 产出，schema 校验通过
-- [ ] 每条候选都带 `verification.design` 与 `evidence_class: exploratory`
-- [ ] 无任何一条候选的 `status` 为 `verified`（那只能由实验写入）
-- [ ] 回归测试：断言输出里不含 `observed_benchmark`、不含判决式措辞
-- [ ] 候选按「潜在节省时间 × 出现频率」排序，前 20 条人工可读
+全部是确定性 SQL，不用模型。每条输出都能由一句 SQL 复现。
+
+| 规则 | 判据 | 本机产出 |
+|---|---|---|
+| `repeated_failures` | 同一形状 ≥ 5 次且失败率 ≥ 40% | 10 |
+| `timeout_and_network_clusters` | `failure_kind` 为 timeout/network 且 ≥ 3 次 | 7 |
+| `duration_hotspots` | 精确口径下累计耗时头部，≥ 5 次 | 12 |
+| `wait_polling` | `command_group = 'wait'` 且 ≥ 3 次 | 13 |
+
+`wait_polling` 单独成规则而不是并进耗时榜：等待的改进方向是换等待机制，
+不是让命令更快，验证设计完全不同。
+
+### 5.5 候选键为什么用 canonical 而不是 template
+
+Drain3 的聚类粒度太粗：它把 `npm run build`（733 秒 / 153 次）与
+`npm run typecheck`（311 秒 / 106 次）聚成同一个 `npm run <*>` 桶。
+那个粒度下没法回答「该验证哪个 script」。
+
+所以 M3 期间给 `commands` 表加了 `canonical` 列
+（确定性占位符替换的结果，保留 script 名），候选键用它。
+`template` 仍保留作辅助分桶。
+
+### 5.6 M3 停止条件
+
+- [x] `candidates.json` + `candidates.md` 产出
+- [x] 每条候选都带 `verification.design` 与 `evidence_class: exploratory`
+- [x] 契约在**构造时**强制：`evidence_class`、`status`、判决式措辞、
+      缺限定词、空 observed 五类越界都在 `Candidate.__post_init__` 抛
+      `ContractViolation`，不是靠事后检查
+- [x] 回归测试断言输出文本不含 `observed_benchmark`
+- [x] 候选按优先级排序并按形状去重，前 20 条人工可读
 
 **注意这里没有「至少一条建议已落地并复测出耗时下降」这一项。**
 效果验证不属于 cmdaudit 的职责，它属于下游的反事实实验。
@@ -348,7 +374,7 @@ cmdaudit 的交付到「给出该做哪些实验」为止。
 
 ---
 
-## 5.5 一个已经浮现的信号：靶子可能放错了
+## 5.7 一个已经浮现的信号：靶子可能放错了
 
 原型（3836 条命令 / 11345s shell 时间）的类别耗时分布：
 

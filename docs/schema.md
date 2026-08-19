@@ -32,7 +32,8 @@
 | `subcommand` | VARCHAR | 仅对 `git` / `npm` / `gh` 这类带子命令的程序非空 |
 | `command_group` | VARCHAR | 手维护的分组表，见下方 |
 | `parse_ok` | BOOLEAN | tree-sitter 是否无错解析；`false` 表示 `program` 来自降级路径 |
-| `template` | VARCHAR | 字面量替换成占位符后的命令形状 |
+| `canonical` | VARCHAR | 确定性占位符替换的结果，**保留 script 名**。比 `template` 细 |
+| `template` | VARCHAR | Drain3 聚类后的命令形状 |
 | `template_id` | VARCHAR | `blake2b(program + subcommand + template)` 短哈希 |
 | `redacted` | BOOLEAN | 该命令是否发生过脱敏替换 |
 
@@ -64,6 +65,22 @@
 3. 文本启发式 —— 只在前两级都无证据时使用。
 
 `status = unknown` 表示没有任何状态证据，**不代表成功**，统计时要单独计。
+
+## canonical 与 template 的区别
+
+两者都是「命令形状」，但粒度不同，用途不能互换：
+
+| 列 | 来源 | 粒度 |
+|---|---|---|
+| `canonical` | 确定性正则替换 | `npm run build` 与 `npm run typecheck` 分开 |
+| `template` | Drain3 聚类 | 两者都聚成 `npm run <*>` |
+
+实测差异：`npm run <*>` 这个 Drain3 桶里含 `build`（733 秒 / 153 次）、
+`typecheck`（311 秒 / 106 次）、`test:e2e`（490 秒 / 30 次）等。
+耗时差好几倍，聚在一起就无法定位该优化哪个 script。
+
+所以候选筛选（`cmdaudit screen`）用 `canonical` 作键，
+`template` 只作辅助分桶。
 
 ## 复合命令的归因限制
 
