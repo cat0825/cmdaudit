@@ -40,7 +40,7 @@ def collect_coverage(conn: duckdb.DuckDBPyConnection) -> dict[str, Any]:
         f"SELECT round(sum(duration_s), 1) FROM commands WHERE {DURATION_GUARD}"
     )
     coverage["可信耗时合计（秒）"] = exact_total
-    if isinstance(exact_total, (int, float)):
+    if isinstance(exact_total, int | float):
         coverage["可信耗时合计（小时）"] = round(exact_total / 3600, 2)
     return coverage
 
