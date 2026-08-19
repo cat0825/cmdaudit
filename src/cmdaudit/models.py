@@ -10,7 +10,10 @@ from dataclasses import dataclass, field
 from typing import Literal, get_args
 
 DurationSource = Literal["self_reported", "turn_delta", "batch_shared", "unknown"]
-Status = Literal["ok", "failed", "unknown"]
+#: `no_match` 是独立状态：`rg` / `grep` / `find` 退出码 1 表示「查无结果」，
+#: 那是一次成功的查询得到空结果，不是命令失败。混进 failed 会虚高失败率，
+#: 并让「哪个程序最容易出错」这个榜单失去意义。
+Status = Literal["ok", "failed", "no_match", "unknown"]
 FailureKind = Literal[
     "timeout",
     "network",
@@ -64,6 +67,9 @@ class ExtractedCommand:
 class Duration:
     seconds: float | None
     source: DurationSource
+    #: 命令未跑完就被工具让出（yield_time_ms 到点），耗时是被截断的下界。
+    #: 这类记录不得进入耗时排名与分位数，否则会系统性低估长命令。
+    truncated: bool = False
 
     def __post_init__(self) -> None:
         if self.source not in DURATION_SOURCES:
@@ -93,6 +99,8 @@ class Outcome:
         # plan.md §3.3 的红线：exit_code=0 绝不判失败。
         if self.exit_code == 0 and self.status == "failed":
             raise ValueError("exit_code=0 不得判为 failed")
+        if self.exit_code == 0 and self.status == "no_match":
+            raise ValueError("exit_code=0 不是 no_match")
         if self.status != "failed" and self.failure_kind is not None:
             raise ValueError("只有 failed 才允许带 failure_kind")
         if self.status == "failed" and self.failure_kind is None:
@@ -115,6 +123,7 @@ class CommandRecord:
     input_kind: str
     duration_s: float | None
     duration_source: DurationSource
+    duration_truncated: bool
     exit_code: int | None
     status: Status
     status_source: StatusSource

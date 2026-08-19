@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS commands (
     input_kind      VARCHAR NOT NULL,
     duration_s      DOUBLE,
     duration_source VARCHAR NOT NULL,
+    -- 命令未跑完就被工具让出：耗时是下界，不得进耗时排名与分位数。
+    duration_truncated BOOLEAN NOT NULL,
     exit_code       BIGINT,   -- Windows 会给出 0xC0000409 这类超出 INT32 的退出码
     status          VARCHAR NOT NULL,
     status_source   VARCHAR NOT NULL,
@@ -51,7 +53,7 @@ CREATE TABLE IF NOT EXISTS extract_stats (
 
 _INSERT: Final[str] = """
 INSERT OR REPLACE INTO commands VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 """
 
@@ -72,6 +74,7 @@ def _row(record: CommandRecord) -> tuple[Any, ...]:
         record.input_kind,
         record.duration_s,
         record.duration_source,
+        record.duration_truncated,
         record.exit_code,
         record.status,
         record.status_source,

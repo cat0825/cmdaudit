@@ -97,3 +97,88 @@ def test_no_evidence_is_unknown_not_failed() -> None:
     assert outcome.status == "unknown"
     assert outcome.status_source == "none"
     assert outcome.failure_kind is None
+
+
+def test_snippet_skips_tool_wrapper_lines() -> None:
+    """片段要显示命令的真实报错，不是 `Wall time` / `Chunk ID` 这类包装行。"""
+    text = (
+        "Chunk ID: 1db2bc\n"
+        "Wall time: 0.0000 seconds\n"
+        "Process exited with code 1\n"
+        "Original token count: 12\n"
+        "Output:\n"
+        "ls: /nope: No such file or directory"
+    )
+    outcome = decide_outcome(text, None)
+    assert outcome.error_snippet == "ls: /nope: No such file or directory"
+
+
+def test_snippet_starts_at_a_line_boundary() -> None:
+    text = "Process exited with code 1\nsome context line\nfatal: bad thing happened\ntail"
+    snippet = decide_outcome(text, None).error_snippet
+    assert snippet is not None
+    assert snippet.startswith("fatal:")
+
+
+def test_snippet_is_none_when_there_is_no_payload() -> None:
+    outcome = decide_outcome("Wall time: 0.1 seconds\nExit code: 1\nOutput:\n", None)
+    assert outcome.status == "failed"
+    assert outcome.error_snippet is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_kind"),
+    [
+        ("Process exited with code 1\nConnectionError: refused", "network"),
+        ("Process exited with code 1\nrequests.exceptions.ReadTimeout", "timeout"),
+        ("Process exited with code 1\nsocket.gaierror: getaddrinfo failed", "network"),
+        ("Process exited with code 1\nundici fetch failed", "network"),
+        ("Process exited with code 1\nTypeError: x is not a function", "other"),
+    ],
+)
+def test_language_level_network_errors(text: str, expected_kind: str) -> None:
+    assert decide_outcome(text, None).failure_kind == expected_kind
+
+
+@pytest.mark.parametrize(
+    ("program", "text", "expected_status"),
+    [
+        # rg/grep/find 的退出码 1 是「查无结果」，一次成功的空查询。
+        ("rg", "Process exited with code 1\nOutput:\n", "no_match"),
+        ("grep", "Process exited with code 1\nOutput:\n", "no_match"),
+        ("find", "Process exited with code 1\nOutput:\n", "no_match"),
+        # 程序自己报错说明是用法问题，不是查无结果。
+        ("rg", "Process exited with code 1\nrg: the literal is not allowed", "failed"),
+        # 其他非零码是真错误（rg 的 2 是用法错误）。
+        ("rg", "Process exited with code 2\nOutput:\nbad", "failed"),
+        # 非搜索类程序的退出码 1 仍是失败。
+        ("git", "Process exited with code 1\nfatal: nope", "failed"),
+        ("ls", "Process exited with code 1\nls: no such file", "failed"),
+    ],
+)
+def test_no_match_is_not_failure(program: str, text: str, expected_status: str) -> None:
+    assert decide_outcome(text, None, program).status == expected_status
+
+
+def test_no_match_carries_no_failure_kind() -> None:
+    outcome = decide_outcome("Process exited with code 1\nOutput:\n", None, "rg")
+    assert outcome.status == "no_match"
+    assert outcome.failure_kind is None
+    assert outcome.exit_code == 1
+
+
+def test_exit_zero_is_never_no_match() -> None:
+    assert decide_outcome("Process exited with code 0\nOutput:\n", None, "rg").status == "ok"
+
+
+@pytest.mark.parametrize("program", ["which", "type", "hash", "command"])
+def test_probe_programs_exit_one_means_not_installed(program: str) -> None:
+    """`which pandoc` 返回 1 是成功的探测得到否定答案，不是命令出错。"""
+    text = "Process exited with code 1\npandoc not found"
+    assert decide_outcome(text, None, program).status == "no_match"
+
+
+@pytest.mark.parametrize("program", ["diff", "cmp"])
+def test_compare_programs_exit_one_means_difference(program: str) -> None:
+    text = "Process exited with code 1\n< a\n> b"
+    assert decide_outcome(text, None, program).status == "no_match"
