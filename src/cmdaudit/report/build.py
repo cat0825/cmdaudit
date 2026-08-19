@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -58,9 +57,3 @@ def build_tables(conn: duckdb.DuckDBPyConnection) -> list[Table]:
         Q.by_agent(conn, EXACT),
         Q.by_project(conn, EXACT),
     ]
-
-
-def open_commands_db(db_path: Path) -> duckdb.DuckDBPyConnection:
-    if not db_path.exists():
-        raise FileNotFoundError(f"找不到 {db_path}，先跑 `cmdaudit extract`")
-    return duckdb.connect(str(db_path), read_only=True)

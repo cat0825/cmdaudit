@@ -11,9 +11,13 @@ import sys
 import time
 from pathlib import Path
 
+from cmdaudit.db import open_commands_db
 from cmdaudit.pipeline import ExtractStats, build_records
-from cmdaudit.report.build import build_tables, collect_coverage, open_commands_db
+from cmdaudit.report.build import build_tables, collect_coverage
 from cmdaudit.report.render import render_json, render_markdown
+from cmdaudit.screen.build import collect_candidates
+from cmdaudit.screen.build import render_json as render_candidates_json
+from cmdaudit.screen.build import render_markdown as render_candidates_markdown
 from cmdaudit.sources.agentsview import (
     DEFAULT_DB_PATH,
     SchemaMismatch,
@@ -98,6 +102,40 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_screen(args: argparse.Namespace) -> int:
+    out_dir: Path = args.out_dir
+    db_path: Path = args.commands_db or (out_dir / "commands.duckdb")
+    try:
+        conn = open_commands_db(db_path)
+    except FileNotFoundError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+
+    try:
+        candidates = collect_candidates(conn, per_rule_limit=args.per_rule)
+    finally:
+        conn.close()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "candidates.json").write_text(
+        render_candidates_json(candidates), encoding="utf-8"
+    )
+    (out_dir / "candidates.md").write_text(
+        render_candidates_markdown(candidates, top=args.top), encoding="utf-8"
+    )
+
+    by_rule: dict[str, int] = {}
+    for candidate in candidates:
+        by_rule[candidate.source_rule] = by_rule.get(candidate.source_rule, 0) + 1
+    print(f"候选总数：{len(candidates)}")
+    for rule_name, count in sorted(by_rule.items(), key=lambda item: -item[1]):
+        print(f"  {rule_name}: {count}")
+    print("证据等级：exploratory（全部 unverified，不得计入质量声明）")
+    print(f"输出：{out_dir / 'candidates.md'}")
+    print(f"输出：{out_dir / 'candidates.json'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cmdaudit",
@@ -119,6 +157,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--commands-db", type=Path, default=None, help="commands.duckdb 路径，默认取 out-dir 下的"
     )
     report.set_defaults(func=_cmd_report)
+
+    screen = sub.add_parser("screen", help="筛出值得做反事实实验的候选（输出假设，非结论）")
+    screen.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help="输出目录")
+    screen.add_argument(
+        "--commands-db", type=Path, default=None, help="commands.duckdb 路径，默认取 out-dir 下的"
+    )
+    screen.add_argument("--per-rule", type=int, default=15, help="每条规则最多产出多少候选")
+    screen.add_argument("--top", type=int, default=20, help="Markdown 里展开前 N 条")
+    screen.set_defaults(func=_cmd_screen)
 
     return parser
 

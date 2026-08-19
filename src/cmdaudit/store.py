@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS commands (
     subcommand      VARCHAR,
     command_group   VARCHAR NOT NULL,
     parse_ok        BOOLEAN NOT NULL,
+    canonical       VARCHAR NOT NULL,
     template        VARCHAR NOT NULL,
     template_id     VARCHAR NOT NULL,
     redacted        BOOLEAN NOT NULL,
@@ -53,7 +54,7 @@ CREATE TABLE IF NOT EXISTS extract_stats (
 
 _INSERT: Final[str] = """
 INSERT OR REPLACE INTO commands VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 """
 
@@ -85,6 +86,7 @@ def _row(record: CommandRecord) -> tuple[Any, ...]:
         record.subcommand,
         record.command_group,
         record.parse_ok,
+        record.canonical,
         record.template,
         record.template_id,
         record.redacted,

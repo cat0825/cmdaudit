@@ -16,7 +16,7 @@ from cmdaudit.extract.status import decide_outcome
 from cmdaudit.models import CommandRecord, RawCall
 from cmdaudit.normalize.group import classify_group
 from cmdaudit.normalize.redact import redact
-from cmdaudit.normalize.template import TemplateEngine, template_id
+from cmdaudit.normalize.template import TemplateEngine, canonicalize, template_id
 
 
 @dataclass(slots=True)
@@ -104,6 +104,7 @@ def build_records(
             outcome = decide_outcome(call.result_content, call.result_status, primary)
             if outcome.status == "no_match":
                 counters.no_match += 1
+            canonical = canonicalize(safe_command)
             template = template_engine.fit(safe_command)
             counters.commands += 1
             yield CommandRecord(
@@ -130,6 +131,7 @@ def build_records(
                 subcommand=subcommand,
                 command_group=classify_group(primary, programs),
                 parse_ok=parse_ok,
+                canonical=canonical,
                 template=template,
                 template_id=template_id(primary, subcommand, template),
                 redacted=was_redacted,

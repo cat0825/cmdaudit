@@ -59,6 +59,7 @@ cmdaudit **不判定**「某条命令是否必要」—— 那个问题只能由
 pip install -e .
 cmdaudit extract              # 只读源库，抽取命令到 ./out/
 cmdaudit report               # 生成 report.md + summary.json
+cmdaudit screen               # 筛出待验证候选（假设，非结论）
 ```
 
 本机实测：58898 条 Bash tool_call → 53341 条命令，耗时 90 秒。
@@ -93,7 +94,8 @@ duckdb out/commands.duckdb -c "
 
 ## 状态
 
-M1（抽取与归一化）、M2（聚合与报告）已完成。M3 候选筛选待做。
+M1（抽取与归一化）、M2（聚合与报告）、M3（候选筛选）已完成。
+可视化（M5）待调研后进行。
 计划见 [`docs/plan.md`](docs/plan.md)，调研记录见 [`docs/research.md`](docs/research.md)。
 
 ### M1 实测结果
@@ -127,3 +129,12 @@ M2 期间修掉两个 M1 的语义缺陷：
   标记并排除出耗时统计。
 - **`no_match` 不是失败**。`rg` / `find` 退出码 1 是查无结果，
   `which` 的 1 是未安装。修正前 `rg` 以 133 次失败排在前列，实际只有 38 次真失败。
+
+### M3 实测结果
+
+四条确定性规则产出 42 条候选：`wait_polling` 13、`duration_hotspots` 12、
+`repeated_failures` 10、`timeout_and_network_clusters` 7。
+
+契约在**构造时**强制，不是事后检查：`evidence_class` 非 `exploratory`、
+`status` 非 `unverified`、判决式措辞（「不必要」「应删除」「redundant」）、
+假设缺少限定词、观测依据为空，五类越界都会抛 `ContractViolation`。
