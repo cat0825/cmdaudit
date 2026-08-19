@@ -37,6 +37,20 @@ agentsview sessions.db ─┐
 - **Drain3** (IBM, MIT) — 命令模板自动聚类，替代手写正则
 - **DuckDB** (MIT) — 聚合查询
 
+## 证据等级
+
+工具输出分两级，不混用：
+
+| 输出 | 等级 | 用法 |
+|---|---|---|
+| `report.md` / `summary.json` | 客观事实 | 命令原文、耗时、退出码，可直接引用 |
+| `candidates.json` | `exploratory` | 待验证假设，**不得计入质量声明** |
+
+cmdaudit **不判定**「某条命令是否必要」—— 那个问题只能由
+「删掉它之后故障是否漏掉」来回答，需要反事实实验。
+工具的职责是把几万条命令压缩到值得做实验的几百条，降低搜索成本，
+而不是替代验证。详见 [`docs/plan.md`](docs/plan.md) §5.1。
+
 ## 状态
 
 设计阶段。计划见 [`docs/plan.md`](docs/plan.md)，调研记录见 [`docs/research.md`](docs/research.md)。

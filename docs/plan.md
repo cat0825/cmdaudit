@@ -1,7 +1,8 @@
 # 实施计划
 
-目标：回答四个问题 —— 我的 agent 都跑了什么命令、各花多长时间、
-哪些失败了、哪些不必要或可预防。
+目标：回答三个**客观**问题 —— 我的 agent 都跑了什么命令、各花多长时间、
+哪些失败了。第四个问题「哪些不必要」**不由本工具回答**，
+它只输出待验证的候选假设，结论由下游的反事实实验给出（见 §5）。
 
 本文档约束**实现方式**、**实现内容**、**停止条件**。
 调研与选型依据见 [`research.md`](research.md)。
@@ -13,7 +14,11 @@
 ### 做
 
 命令级审计：从已有会话记录里抽取每条 shell 命令，附耗时、退出码、失败归因，
-聚合成统计，再交给模型给出改进建议。离线、只读、本机。
+聚合成可复现的统计，再筛出值得做反事实实验的候选。离线、只读、本机。
+
+**证据等级**：M1/M2 产出的是客观事实（命令原文、耗时、退出码），
+可直接引用；M3 产出的是待验证假设，标注 `evidence_class: exploratory`，
+不得计入任何质量声明。
 
 ### 不做
 
@@ -21,7 +26,9 @@
 - 会话浏览 UI —— agentsview 已做透
 - fork agentsview —— 855 个 Go 文件且每天推送，维护成本远超收益
 - 实时监控 / 常驻进程 —— 这是离线审计工具
-- 自动执行改进建议 —— 只输出建议，改不改由人决定
+- 自动执行改进建议 —— 只输出候选，改不改由人决定
+- **判定某条命令「必要 / 不必要」** —— 无 ground truth，见 §5.1
+- **反事实实验本身** —— 那是下游职责，cmdaudit 只负责选题
 
 ### 硬约束
 
@@ -45,7 +52,7 @@ tree-sitter 的 Python 绑定成熟，且这是离线分析工具，不需要 Go
 cmdaudit/
 ├── src/cmdaudit/
 │   ├── __init__.py
-│   ├── cli.py              # argparse 入口：extract / report / analyze
+│   ├── cli.py              # argparse 入口：extract / report / screen
 │   ├── sources/
 │   │   ├── agentsview.py   # 主数据源：只读 SQLite
 │   │   └── jsonl.py        # 兜底：直读 Claude/Codex JSONL（M4）
@@ -60,7 +67,7 @@ cmdaudit/
 │   │   └── redact.py       # 脱敏
 │   ├── store.py            # DuckDB schema + 写入
 │   ├── report.py           # 聚合查询 + Markdown/JSON 渲染
-│   └── analyze.py          # 模型分析
+│   └── screen.py           # 候选筛选（输出假设，非结论）
 ├── tests/
 │   ├── fixtures/           # 各 agent 脱敏样本
 │   └── test_*.py
@@ -82,9 +89,11 @@ cmdaudit/
         ├─ extract ─→ commands 表 (DuckDB)
         │             命令原文 / 耗时 / 状态 / 程序 / 模板 / 分组
         │
-        ├─ report ──→ report.md + summary.json
+        ├─ report ──→ report.md + summary.json       [客观事实，可直接引用]
         │
-        └─ analyze ─→ analysis.md
+        └─ screen ──→ candidates.json                [待验证假设，exploratory]
+                          │
+                          └─→ 反事实实验（cmdaudit 之外）→ 才是结论
 ```
 
 ---
@@ -227,27 +236,114 @@ JS 脚本里的 `cmd:` 提取不能用正则一把梭 —— 字符串可能是 
 
 ---
 
-## 5. M3 模型分析
+## 5. M3 候选筛选（不是判定）
 
-`cmdaudit analyze` 输出 `analysis.md`。
+`cmdaudit screen` 输出 `candidates.md` + `candidates.json`。
 
-输入是 M2 的聚合结果 + 每个高开销模板的若干真实样本（含错误片段），
-**不是全量命令** —— 51857 条塞不进上下文，也没必要。
+### 5.1 为什么不做「必要性判定」
 
-要求模型按四段输出：
+原计划让模型输出「这条命令必要 / 可删除」。**这条路不通**，原因不是模型不准，
+而是这种输出没有 ground truth：
 
-1. **必要性判定**：必要 / 可合并 / 可缓存 / 可删除，附依据
-2. **耗时归因**：网络 / 磁盘 IO / 编译 / 等待进程 / 超时重试 / 参数误用
-3. **预防措施**：能直接落进 `AGENTS.md`、脚本或 alias 的规则，给命令示例
-4. **优先级**：按「节省时间 × 出现频率」排序取前 10
+当模型说「这条 `npm test` 没必要跑」，没有任何东西能证明它说对了。
+「某个验证步骤是否必要」只能由「删掉它之后故障是否漏掉」来回答，
+而模型没跑过那个反事实实验。
 
-默认走本机已装的 agent CLI，数据不出本机（复用 agentsview insights 的思路）。
+把模型判定当标签用会污染下游。以本仓库的消费方为例，
+`src/cohort.mjs:8` 的 `EVIDENCE_CLASSES` 只接受 `planning` 与
+`observed_benchmark` 两种证据等级，模型判定两者都不是；
+`src/evaluation.mjs:451` 的效率声明还要求 `failure_recall` 不回退才成立。
+硬塞模型判定等于绕过 fail-closed 检查从侧门放行未验证结论。
 
-### M3 停止条件
+### 5.2 改成筛选器
 
-- [ ] `analysis.md` 产出，四段结构完整
-- [ ] 前 10 条建议每条都指向具体的 template 和实测数字
-- [ ] **至少一条建议已落地并复测出耗时下降**（这是唯一的效果验证）
+| 用法 | 链条 | 是否可行 |
+|---|---|---|
+| 当**标签** | 模型说不必要 → 记为不必要 → 进数据集 | 不可行，无 ground truth |
+| 当**筛选器** | 模型说可疑 → 反事实实验验证 → 验证过的才进数据集 | 可行 |
+
+模型的职责是把 51857 条压缩到值得做实验的 200 条，降低的是**搜索成本**，
+不是证据门槛。
+
+### 5.3 输出契约
+
+每条候选必须是**可验证的假设**，不是结论：
+
+```json
+{
+  "template_id": "t_0421",
+  "template": "sleep <n>; tail -<n> <path>",
+  "observed": { "count": 45, "total_s": 1636.1, "pct_of_shell_time": 14.4 },
+  "hypothesis": "轮询等待可由事件通知替代，节省等待时间",
+  "verification": {
+    "method": "counterfactual_run",
+    "design": "同一任务跑两个 run，一个用 sleep 轮询一个用事件回调，比较总耗时与故障召回",
+    "oracle": "independent_oracle"
+  },
+  "evidence_class": "exploratory",
+  "status": "unverified"
+}
+```
+
+硬约束：
+- `evidence_class` 恒为 `exploratory`，**不允许出现 `observed_benchmark`**
+- `status` 初始恒为 `unverified`，只能由外部反事实实验改写
+- 措辞必须是「疑似 / 待验证」，禁止「不必要 / 应删除」这类判决式表述
+- 每条必须带 `verification.design`，给不出验证方式的候选直接丢弃
+
+### 5.4 M3 停止条件
+
+- [ ] `candidates.json` 产出，schema 校验通过
+- [ ] 每条候选都带 `verification.design` 与 `evidence_class: exploratory`
+- [ ] 无任何一条候选的 `status` 为 `verified`（那只能由实验写入）
+- [ ] 回归测试：断言输出里不含 `observed_benchmark`、不含判决式措辞
+- [ ] 候选按「潜在节省时间 × 出现频率」排序，前 20 条人工可读
+
+**注意这里没有「至少一条建议已落地并复测出耗时下降」这一项。**
+效果验证不属于 cmdaudit 的职责，它属于下游的反事实实验。
+cmdaudit 的交付到「给出该做哪些实验」为止。
+
+---
+
+## 5.5 一个已经浮现的信号：靶子可能放错了
+
+原型（3836 条命令 / 11345s shell 时间）的类别耗时分布：
+
+| 类别 | 耗时占比 | 条数 | 说明 |
+|---|---:|---:|---|
+| other | 23.1% | 465 | 头部是 `for` 循环 1190s、`npx` 694s |
+| proc_sys | 15.5% | 132 | **头部是 `sleep` 1636s** |
+| net | 12.7% | 411 | 网络等待 |
+| search_read | 11.9% | 1732 | 条数最多但 p90 仅 0.58s |
+| pkg | 9.0% | 143 | |
+| **test** | **8.8%** | 143 | |
+| vcs | 8.7% | 512 | |
+
+`other` + `proc_sys` 合计 **38.6%**，而 `test` 只有 8.8%。
+
+深挖 `proc_sys` 的头部，`sleep` 45 次吃掉 1636s，占全部 shell 时间的
+**14.4%**，形态全是：
+
+```
+sleep 180; tail -5 <task 输出文件>
+sleep 150; tail -3 <task 输出文件>
+sleep 90;  gh pr view 118 --json mergeStateStatus
+```
+
+这是等后台任务时的轮询等待 —— **纯等待，零信息产出**，
+而且单条最长 180s。
+
+这个数字的意义比「哪条测试不必要」大得多：如果下游实验全部围绕测试命令设计，
+最好情况也只能改善那 8.8%。**扩大实验规模之前，应先确认靶子位置。**
+
+需要说明两点边界：
+
+1. 这是**探索性信号**（`evidence_class: exploratory`），样本仅 3836 条命令、
+   单机单人，不能外推。
+2. `other` 类里的 `for` / `#` / `-v` 是原型解析器的**误判** ——
+   `command -v codex` 被当成程序名 `-v`，heredoc 里的注释被当成命令。
+   这正是 M1 用 tree-sitter-bash 替代 shlex 的直接理由。
+   修正后 `other` 的占比会下降，但 `sleep` 那 14.4% 不受影响，它是真实的。
 
 ---
 
@@ -258,8 +354,21 @@ M1 + M2 + M3 的 checklist 全绿，且满足：
 - `README.md` 有可复制的 quickstart，新用户三条命令内看到报告
 - `docs/schema.md` 记录 `commands` 表每一列的含义与取值来源
 - CI 跑 `ruff` + `mypy` + `pytest`
+- **证据等级分离**：M1/M2 输出不含任何模型生成内容；
+  M3 输出的每条记录都带 `evidence_class: exploratory` 与 `status: unverified`
 
 **到这里就停。** M4 是可选项，需要新的明确需求才启动，不自动展开。
+
+### 明确不作为停止条件的事项
+
+以下都**不属于** cmdaudit 的交付范围，不要因为它们没做完而继续开发：
+
+- 某条候选是否真的冗余 —— 需要反事实实验
+- 改进后耗时是否真的下降 —— 需要 baseline/candidate 双跑对比
+- 故障召回是否回退 —— 需要独立 oracle
+
+cmdaudit 的交付边界是「给出可复现的命令统计 + 值得做哪些实验」。
+越过这条线就是在用未验证结论冒充证据。
 
 ---
 
