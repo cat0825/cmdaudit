@@ -109,12 +109,23 @@ npm run build           → cluster 3
 2. **并行批次的耗时不能均摊**。Codex 旧格式一个 JS 脚本里 `Promise.all` 并发多条
    `exec_command`，只有外层一个总墙钟。均摊会让每条命令的耗时都是错的，
    必须显式标记 `duration_source=batch_shared` 并在聚合时单独处理。
+3. **两个正则陷阱**，原型都踩了：
+   - 实际格式是 `Wall time 1.2 seconds`，**没有冒号**。写成
+     `Wall time:?\s*([0-9.]+)\s*seconds` 后对 43336 条命中率 100%。
+   - 内层 JSON 是**转义**的：`\"wall_time_seconds\":1.002`。原型的正则
+     要求未转义引号，导致 1295 个并发脚本全部降级；修正为
+     `wall_time_seconds[\\"]*\s*:\s*([0-9.]+)` 后，**365 个脚本可救回
+     逐条精确耗时**。
+4. **`Bash` category 里 25% 不是命令**。实测 14838/58287 条的 `input_json`
+   没有任何命令键，其中 `write_stdin` 3748 条只是向已有进程轮询
+   （`{session_id, yield_time_ms, max_output_tokens}`），`apply_patch` 1468 条
+   是打补丁。不排除会给统计灌 6% 的水。
 
 ## 5. 数据规模
 
 | 数据源 | 规模 |
 |---|---|
-| `~/.agentsview/sessions.db` | 1.6 GB，`tool_calls` 79516 行，其中 Bash 58287 行 |
+| `~/.agentsview/sessions.db` | 1.6 GB，1600 会话 / 111 项目，`tool_calls` 79516 行，其中 Bash 58287 行（可抽取命令约 51857 条） |
 | `~/.claude/projects/**/*.jsonl` | 294 文件 / 143 MB |
 | `~/.codex/sessions` + `archived_sessions` | 184 文件 / 250 MB |
 
