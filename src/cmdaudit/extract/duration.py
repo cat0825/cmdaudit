@@ -28,6 +28,16 @@ RE_INNER_WALL: Final[re.Pattern[str]] = re.compile(
 
 UNKNOWN: Final[Duration] = Duration(seconds=None, source="unknown")
 
+#: 进程未退出的标记。工具的 `yield_time_ms` 到点会让出，命令仍在后台跑，
+#: 此时自报墙钟只记到让出那一刻，是耗时的下界而非耗时。
+#: 实测 612 条自报耗时聚集在 30.0-30.5s（工具默认让出上限），
+#: 其中 473 条没有退出码 —— 命令确实没跑完。不标记会系统性低估长命令。
+RE_STILL_RUNNING: Final[re.Pattern[str]] = re.compile(
+    r"(?:still running|process (?:is )?running|"
+    r"session id|timed out waiting|use write_stdin)",
+    re.IGNORECASE,
+)
+
 #: `turn_delta` 的可信上限（秒）。时间戳差值包含模型思考与用户离开的时间，
 #: 不等于命令耗时。实测最大值 39087s（约 10.9 小时）显然是会话空闲，
 #: 超过这个阈值的差值不可信，降级为 unknown 而不是当成命令耗时。
@@ -57,10 +67,25 @@ def _trusted_delta(turn_delta_s: float | None) -> float | None:
     return turn_delta_s
 
 
+def looks_truncated(result_content: str | None, exit_code: int | None) -> bool:
+    """判断这条记录的耗时是否被工具让出截断。
+
+    判据是「没有退出码」而不是「耗时接近 30 秒」：
+    真正跑了 30 秒又正常退出的命令是有效数据，不该被排除。
+    """
+    if exit_code is not None:
+        return False
+    if not result_content:
+        return False
+    return bool(RE_STILL_RUNNING.search(result_content))
+
+
 def resolve_durations(
     result_content: str | None,
     slot_count: int,
     turn_delta_s: float | None,
+    *,
+    truncated: bool = False,
 ) -> list[Duration]:
     """为同一个 tool_call 里的 slot_count 条命令各定一个耗时。
 
@@ -84,17 +109,17 @@ def resolve_durations(
 
     if slot_count == 1:
         if inner and len(inner) == 1:
-            return [Duration(inner[0], "self_reported")]
+            return [Duration(inner[0], "self_reported", truncated=truncated)]
         if outer is not None:
-            return [Duration(outer, "self_reported")]
+            return [Duration(outer, "self_reported", truncated=truncated)]
         if delta is not None:
-            return [Duration(delta, "turn_delta")]
+            return [Duration(delta, "turn_delta", truncated=truncated)]
         return [UNKNOWN]
 
     if len(inner) == slot_count:
-        return [Duration(v, "self_reported") for v in inner]
+        return [Duration(v, "self_reported", truncated=truncated) for v in inner]
 
     shared = outer if outer is not None else delta
     if shared is None:
         return [UNKNOWN] * slot_count
-    return [Duration(shared, "batch_shared")] * slot_count
+    return [Duration(shared, "batch_shared", truncated=truncated)] * slot_count

@@ -10,7 +10,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
 from cmdaudit.extract.command import extract_commands
-from cmdaudit.extract.duration import resolve_durations
+from cmdaudit.extract.duration import looks_truncated, resolve_durations
 from cmdaudit.extract.shellparse import parse_programs
 from cmdaudit.extract.status import decide_outcome
 from cmdaudit.models import CommandRecord, RawCall
@@ -29,6 +29,8 @@ class ExtractStats:
     commands: int = 0
     parse_failed: int = 0
     redacted: int = 0
+    duration_truncated: int = 0
+    no_match: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return {
@@ -38,6 +40,8 @@ class ExtractStats:
             "commands": self.commands,
             "parse_failed": self.parse_failed,
             "redacted": self.redacted,
+            "duration_truncated": self.duration_truncated,
+            "no_match": self.no_match,
         }
 
 
@@ -80,8 +84,15 @@ def build_records(
             continue
 
         delta = turn_delta_seconds(call.started_at, call.ended_at)
-        durations = resolve_durations(call.result_content, len(extracted), delta)
-        outcome = decide_outcome(call.result_content, call.result_status)
+        # 先用不带 program 的判定拿到 exit_code，用于 truncated 检测；
+        # 每条命令的最终状态在下面按它自己的 program 重新判（no_match 依赖 program）。
+        probe = decide_outcome(call.result_content, call.result_status)
+        truncated = looks_truncated(call.result_content, probe.exit_code)
+        durations = resolve_durations(
+            call.result_content, len(extracted), delta, truncated=truncated
+        )
+        if truncated:
+            counters.duration_truncated += 1
 
         for item, duration in zip(extracted, durations, strict=True):
             safe_command, was_redacted = redact(item.command)
@@ -90,6 +101,9 @@ def build_records(
             programs, primary, subcommand, parse_ok = parse_programs(safe_command)
             if not parse_ok:
                 counters.parse_failed += 1
+            outcome = decide_outcome(call.result_content, call.result_status, primary)
+            if outcome.status == "no_match":
+                counters.no_match += 1
             template = template_engine.fit(safe_command)
             counters.commands += 1
             yield CommandRecord(
@@ -105,6 +119,7 @@ def build_records(
                 input_kind=item.input_kind,
                 duration_s=duration.seconds,
                 duration_source=duration.source,
+                duration_truncated=duration.truncated,
                 exit_code=outcome.exit_code,
                 status=outcome.status,
                 status_source=outcome.status_source,

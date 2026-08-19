@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 
 from cmdaudit.pipeline import ExtractStats, build_records
+from cmdaudit.report.build import build_tables, collect_coverage, open_commands_db
+from cmdaudit.report.render import render_json, render_markdown
 from cmdaudit.sources.agentsview import (
     DEFAULT_DB_PATH,
     SchemaMismatch,
@@ -66,6 +68,36 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    out_dir: Path = args.out_dir
+    db_path: Path = args.commands_db or (out_dir / "commands.duckdb")
+    try:
+        conn = open_commands_db(db_path)
+    except FileNotFoundError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+
+    try:
+        coverage = collect_coverage(conn)
+        tables = build_tables(conn)
+    finally:
+        conn.close()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    markdown = render_markdown(tables=tables, coverage=coverage, source_db=str(db_path))
+    payload = render_json(tables=tables, coverage=coverage, source_db=str(db_path))
+    (out_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (out_dir / "summary.json").write_text(payload, encoding="utf-8")
+
+    print(f"命令总数：{coverage['命令总数']}")
+    print(f"可用于耗时统计：{coverage['可用于耗时统计']}")
+    print(f"判定为失败：{coverage['判定为失败']}")
+    print(f"表数量：{len(tables)}")
+    print(f"输出：{out_dir / 'report.md'}")
+    print(f"输出：{out_dir / 'summary.json'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cmdaudit",
@@ -80,6 +112,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit", type=int, default=None, help="只处理前 N 个 tool_call（调试用）"
     )
     extract.set_defaults(func=_cmd_extract)
+
+    report = sub.add_parser("report", help="从 commands 表生成报告")
+    report.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help="输出目录")
+    report.add_argument(
+        "--commands-db", type=Path, default=None, help="commands.duckdb 路径，默认取 out-dir 下的"
+    )
+    report.set_defaults(func=_cmd_report)
 
     return parser
 
