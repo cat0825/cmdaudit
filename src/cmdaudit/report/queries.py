@@ -110,9 +110,15 @@ LIMIT {limit}
 def duration_by_template(
     conn: duckdb.DuckDBPyConnection, scope: Scope, *, limit: int = 30
 ) -> Table:
-    """耗时榜：按模板聚合。"""
+    """耗时榜：按 `canonical` 聚合。
+
+    不用 Drain3 的 `template`：它把 `npm run build`（732 秒 / 152 次）、
+    `npm run typecheck`（311 秒 / 106 次）、`npm run test:e2e`（490 秒 / 30 次）
+    聚成同一个 `npm run <*>` 桶。那个粒度下「哪一类命令吃掉我最多时间」
+    这个问题的答案是「npm run 什么东西」，没有可操作性。
+    """
     sql = f"""
-SELECT template,
+SELECT canonical,
        program,
        count(*)                                    AS runs,
        round(sum(duration_s), 1)                   AS total_s,
@@ -122,18 +128,22 @@ SELECT template,
 FROM commands
 WHERE {scope.sql_filter}
   AND {_PERCENTILE_GUARD}
-GROUP BY template, program
+GROUP BY canonical, program
 ORDER BY total_s DESC
 LIMIT {limit}
 """.strip()
     return Table(
-        key="duration_by_template",
-        title="耗时榜：按命令模板聚合",
+        key="duration_by_command_shape",
+        title="耗时榜：按命令形状聚合",
         scope=scope,
-        columns=("template", "program", "runs", "total_s", "p50_s", "p90_s", "max_s"),
+        columns=("canonical", "program", "runs", "total_s", "p50_s", "p90_s", "max_s"),
         rows=_run(conn, sql),
         sql=sql,
-        note="回答「哪一类命令吃掉我最多时间」。默认按总耗时降序。",
+        note=(
+            "回答「哪一类命令吃掉我最多时间」。默认按总耗时降序。"
+            "形状用确定性占位符替换（保留 script 名），不用 Drain3 聚类 —— "
+            "后者会把 `npm run build` 与 `npm run typecheck` 合成一桶。"
+        ),
     )
 
 

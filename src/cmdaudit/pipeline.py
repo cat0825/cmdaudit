@@ -10,7 +10,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
 from cmdaudit.extract.command import extract_commands
-from cmdaudit.extract.duration import looks_truncated, resolve_durations
+from cmdaudit.extract.duration import looks_truncated, mark_truncated, resolve_durations
 from cmdaudit.extract.shellparse import parse_programs
 from cmdaudit.extract.status import decide_outcome
 from cmdaudit.models import CommandRecord, RawCall
@@ -87,10 +87,12 @@ def build_records(
         # 先用不带 program 的判定拿到 exit_code，用于 truncated 检测；
         # 每条命令的最终状态在下面按它自己的 program 重新判（no_match 依赖 program）。
         probe = decide_outcome(call.result_content, call.result_status)
-        truncated = looks_truncated(call.result_content, probe.exit_code)
-        durations = resolve_durations(
-            call.result_content, len(extracted), delta, truncated=truncated
-        )
+        durations = resolve_durations(call.result_content, len(extracted), delta)
+        # 截断判定要看最终耗时值（贴着让出上限且无退出码即为截断），
+        # 所以先算耗时再标记。
+        longest = max((d.seconds for d in durations if d.seconds is not None), default=None)
+        truncated = looks_truncated(call.result_content, probe.exit_code, longest)
+        durations = mark_truncated(durations, truncated=truncated)
         if truncated:
             counters.duration_truncated += 1
 
