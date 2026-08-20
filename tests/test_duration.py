@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from cmdaudit.extract.duration import (
     TURN_DELTA_CEILING_S,
+    UNKNOWN,
+    YIELD_CEILING_S,
+    looks_truncated,
     parse_inner_wall_times,
     parse_outer_wall_time,
     resolve_durations,
 )
+from cmdaudit.models import Duration
 
 # 新格式：有冒号。
 NEW_FORMAT = "Chunk ID: a40592\nWall time: 0.0516 seconds\nProcess exited with code 0\n"
@@ -81,3 +85,59 @@ def test_no_evidence_yields_unknown() -> None:
 
 def test_zero_slots_returns_empty() -> None:
     assert resolve_durations(NEW_FORMAT, 0, None) == []
+
+
+def test_background_session_marker_counts_as_truncated() -> None:
+    """`gh pr checks --watch` 被挂到后台会话时输出以 SESSION_ID= 结尾。
+
+    工具侧会把这次调用标记为 completed，但命令并没有退出，
+    自报的 30 秒只是让出时刻。不标记会让耗时榜把它当真实耗时。
+    """
+    text = "quality\tpending\t0\thttps://example.test/job/1\nSESSION_ID=91282"
+    assert looks_truncated(text, None) is True
+
+
+def test_exit_code_wins_over_session_marker() -> None:
+    """有退出码就说明命令确实结束了，即使输出里提到 session。"""
+    assert looks_truncated("SESSION_ID=1\nProcess exited with code 0", 0) is False
+
+
+def test_normal_completion_is_not_truncated() -> None:
+    assert looks_truncated("Wall time: 1.0 seconds\nProcess exited with code 0", 0) is False
+
+
+def test_duration_at_yield_ceiling_without_exit_code_is_truncated() -> None:
+    """贴着让出上限又没有退出码：命令没退出，30 秒只是让出时刻。
+
+    阈值有数据支撑：无退出码的自报耗时里 >=29.9s 有 632 条，
+    而 20-29.9s 只有 69 条。这个断崖说明 30 秒是上限不是真实分布。
+    """
+    assert looks_truncated("some output", None, YIELD_CEILING_S) is True
+    assert looks_truncated("some output", None, 30.2) is True
+
+
+def test_duration_at_ceiling_with_exit_code_is_trusted() -> None:
+    """有退出码就是真跑完了，哪怕耗时正好贴着上限。"""
+    assert looks_truncated("Process exited with code 0", 0, 30.0) is False
+
+
+def test_duration_below_ceiling_without_exit_code_is_not_truncated() -> None:
+    """没到上限就没有截断的理由，不能只因为缺退出码就判截断。"""
+    assert looks_truncated("some output", None, 5.0) is False
+
+
+def test_mark_truncated_preserves_unknown_durations() -> None:
+    from cmdaudit.extract.duration import mark_truncated
+
+    durations = [Duration(1.0, "self_reported"), UNKNOWN]
+    marked = mark_truncated(durations, truncated=True)
+    assert marked[0].truncated is True
+    assert marked[1].source == "unknown"
+    assert marked[1].truncated is False
+
+
+def test_mark_truncated_is_a_noop_when_not_truncated() -> None:
+    from cmdaudit.extract.duration import mark_truncated
+
+    durations = [Duration(1.0, "self_reported")]
+    assert mark_truncated(durations, truncated=False) == durations

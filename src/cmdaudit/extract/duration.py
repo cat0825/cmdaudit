@@ -34,7 +34,7 @@ UNKNOWN: Final[Duration] = Duration(seconds=None, source="unknown")
 #: 其中 473 条没有退出码 —— 命令确实没跑完。不标记会系统性低估长命令。
 RE_STILL_RUNNING: Final[re.Pattern[str]] = re.compile(
     r"(?:still running|process (?:is )?running|"
-    r"session id|timed out waiting|use write_stdin)",
+    r"session id|SESSION_ID\s*=|timed out waiting|use write_stdin)",
     re.IGNORECASE,
 )
 
@@ -67,17 +67,48 @@ def _trusted_delta(turn_delta_s: float | None) -> float | None:
     return turn_delta_s
 
 
-def looks_truncated(result_content: str | None, exit_code: int | None) -> bool:
+#: 工具默认让出上限（秒）。贴着这个值又拿不到退出码的记录，耗时是让出时刻。
+#:
+#: 阈值有数据支撑而不是猜的：无退出码的自报耗时里 `>=29.9s` 有 632 条，
+#: 而 `20-29.9s` 只有 69 条 —— 这个断崖说明 30 秒是让出上限不是真实分布。
+#: 有退出码的对照组里 `>=29.9s` 只有 15 条。
+YIELD_CEILING_S: Final[float] = 29.9
+
+
+def looks_truncated(
+    result_content: str | None,
+    exit_code: int | None,
+    duration_s: float | None = None,
+) -> bool:
     """判断这条记录的耗时是否被工具让出截断。
 
     判据是「没有退出码」而不是「耗时接近 30 秒」：
     真正跑了 30 秒又正常退出的命令是有效数据，不该被排除。
+
+    注意不能用 `result_status == 'completed'` 反证命令跑完了：
+    那个字段说的是「工具调用完成」，不是「命令退出」。
+    实测 `gh pr checks --watch` 被挂到后台会话（输出以 `SESSION_ID=` 结尾），
+    工具侧标记为 completed，但命令仍在跑，30 秒只是让出时刻。
     """
     if exit_code is not None:
+        # 有退出码就是真的跑完了，哪怕耗时正好贴着上限。
         return False
+    # 贴着让出上限又没有退出码：命令没退出，30 秒只是让出时刻。
+    if duration_s is not None and duration_s >= YIELD_CEILING_S:
+        return True
     if not result_content:
         return False
     return bool(RE_STILL_RUNNING.search(result_content))
+
+
+def mark_truncated(durations: list[Duration], *, truncated: bool) -> list[Duration]:
+    """按最终耗时值重新判定截断标记。"""
+    if not truncated:
+        return durations
+    return [
+        Duration(item.seconds, item.source, truncated=True) if item.seconds is not None else item
+        for item in durations
+    ]
 
 
 def resolve_durations(

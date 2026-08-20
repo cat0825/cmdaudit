@@ -152,3 +152,16 @@ def test_report_never_leaks_credentials(commands_db: duckdb.DuckDBPyConnection) 
         source_db="test.duckdb",
     )
     assert "sk-ant-abcdefghij1234567890" not in markdown
+
+
+def test_duration_table_uses_canonical_not_drain3_template(
+    commands_db: duckdb.DuckDBPyConnection,
+) -> None:
+    """耗时榜必须能区分 `npm run build` 与 `npm run typecheck`。
+
+    Drain3 把两者聚成 `npm run <*>`，那个粒度下答案没有可操作性。
+    """
+    table = Q.duration_by_template(commands_db, EXACT)
+    assert "canonical" in table.columns
+    assert "GROUP BY canonical" in table.sql
+    assert "GROUP BY template" not in table.sql
