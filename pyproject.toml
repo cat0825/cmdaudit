@@ -27,6 +27,11 @@ cmdaudit = "cmdaudit.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# 工作台外壳是预编译产物（web/ 子工程 → dist/index.html），必须随包分发：
+# 终端用户装 cmdaudit 不需要 Node 工具链。
+[tool.setuptools.package-data]
+cmdaudit = ["viz/shell.html"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -50,3 +55,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# 不依赖 editable 安装：macOS 上 pip 生成的 __editable__*.pth 可能被打上 UF_HIDDEN，
+# 被 site.addpackage 静默跳过，于是 venv 里 import cmdaudit 失败。测试直接指向源码树。
+pythonpath = ["src"]
