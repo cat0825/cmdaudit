@@ -60,6 +60,7 @@ pip install -e .
 cmdaudit extract              # 只读源库，抽取命令到 ./out/
 cmdaudit report               # 生成 report.md + summary.json
 cmdaudit screen               # 筛出待验证候选（假设，非结论）
+cmdaudit viz                  # 生成 report.html（离线单文件，可下钻到命令原文）
 ```
 
 本机实测：58898 条 Bash tool_call → 53341 条命令，耗时 90 秒。
@@ -92,10 +93,22 @@ duckdb out/commands.duckdb -c "
 `batch_shared`（批次共享总墙钟）、`unknown`（无证据）、
 `duration_truncated`（命令未跑完就被工具让出）。
 
+## 可视化怎么读
+
+`cmdaudit viz` 生成 `out/report.html`：单文件、离线、双击即开，无 CDN 与埋点。
+
+它不是监控大屏，是一次性历史审计的下钻工具。页面按证据轨道分区
+（失败线 / 耗时线 / 候选队列），每条轨道自带口径与 caveat；
+点开任意聚合行可看该行的命令原文样本与可复现 SQL。
+数字与 `report.md` 同源同 SQL，两份产物不会给出不同结论。
+
+```bash
+cmdaudit viz --out-dir out --open
+```
+
 ## 状态
 
-M1（抽取与归一化）、M2（聚合与报告）、M3（候选筛选）已完成。
-可视化（M5）待调研后进行。
+M1（抽取与归一化）、M2（聚合与报告）、M3（候选筛选）、M5（可视化）已完成。
 计划见 [`docs/plan.md`](docs/plan.md)，调研记录见 [`docs/research.md`](docs/research.md)。
 
 ### M1 实测结果

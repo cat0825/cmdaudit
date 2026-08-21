@@ -1,6 +1,6 @@
 """命令行入口。
 
-M1 只提供 `extract`；`report` / `screen` 在 M2 / M3 加。
+M1 只提供 `extract`；`report` / `screen` 在 M2 / M3 加，`viz` 在 M5 加。
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ import argparse
 import json
 import sys
 import time
+import webbrowser
 from pathlib import Path
 
 from cmdaudit.db import open_commands_db
@@ -26,6 +27,7 @@ from cmdaudit.sources.agentsview import (
     open_readonly,
 )
 from cmdaudit.store import write_commands, write_stats
+from cmdaudit.viz.build import build_viz
 
 DEFAULT_OUT_DIR = Path("out")
 
@@ -136,6 +138,33 @@ def _cmd_screen(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_viz(args: argparse.Namespace) -> int:
+    out_dir: Path = args.out_dir
+    db_path: Path = args.commands_db or (out_dir / "commands.duckdb")
+    out_html: Path = args.out or (out_dir / "report.html")
+
+    # 候选文件缺失不是错误：页面会显式说明队列为空并给出补齐命令。
+    candidates = args.candidates or (out_dir / "candidates.json")
+
+    try:
+        written = build_viz(
+            db_path, out_html, candidates_path=candidates, fixture_path=args.emit_fixture
+        )
+    except FileNotFoundError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+    except RuntimeError as exc:
+        # 外壳缺失/损坏属于打包问题，直接把修复命令打出来，不留下半成品页面。
+        print(f"错误：{exc}", file=sys.stderr)
+        return 3
+
+    size_kb = written.stat().st_size / 1024
+    print(f"输出：{written}（{size_kb:.0f} KB，离线单文件）")
+    if args.open and not webbrowser.open(written.resolve().as_uri()):
+        print("警告：未找到可用浏览器，请手动打开该文件", file=sys.stderr)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cmdaudit",
@@ -166,6 +195,26 @@ def build_parser() -> argparse.ArgumentParser:
     screen.add_argument("--per-rule", type=int, default=15, help="每条规则最多产出多少候选")
     screen.add_argument("--top", type=int, default=20, help="Markdown 里展开前 N 条")
     screen.set_defaults(func=_cmd_screen)
+
+    viz = sub.add_parser("viz", help="生成离线单文件 HTML 报告页（可下钻到命令原文）")
+    viz.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help="输出目录")
+    viz.add_argument(
+        "--commands-db", type=Path, default=None, help="commands.duckdb 路径，默认取 out-dir 下的"
+    )
+    viz.add_argument(
+        "--out", type=Path, default=None, help="HTML 输出路径，默认 out-dir/report.html"
+    )
+    viz.add_argument(
+        "--candidates", type=Path, default=None, help="candidates.json 路径，默认取 out-dir 下的"
+    )
+    viz.add_argument(
+        "--emit-fixture",
+        type=Path,
+        default=None,
+        help="额外导出 payload JSON（供 web/ 前端开发用，产物页面不依赖它）",
+    )
+    viz.add_argument("--open", action="store_true", help="生成后用默认浏览器打开")
+    viz.set_defaults(func=_cmd_viz)
 
     return parser
 
