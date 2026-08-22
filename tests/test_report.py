@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
 
-from cmdaudit.models import RawCall
+from cmdaudit.models import CommandRecord, RawCall
 from cmdaudit.pipeline import build_records
 from cmdaudit.report import queries as Q
 from cmdaudit.report.build import build_tables, collect_coverage
@@ -165,3 +166,66 @@ def test_duration_table_uses_canonical_not_drain3_template(
     assert "canonical" in table.columns
     assert "GROUP BY canonical" in table.sql
     assert "GROUP BY template" not in table.sql
+
+
+def _failed_record(call_id: int, started_at: str, snippet: str) -> CommandRecord:
+    return CommandRecord(
+        session_id="s",
+        agent="codex",
+        project="p",
+        call_id=call_id,
+        slot=0,
+        started_at=started_at,
+        tool_name="exec_command",
+        command="git pull",
+        workdir=None,
+        input_kind="cmd",
+        duration_s=None,
+        duration_source="unknown",
+        duration_truncated=False,
+        exit_code=128,
+        status="failed",
+        status_source="exit_code",
+        failure_kind="network",
+        error_snippet=snippet,
+        program="git",
+        programs=("git",),
+        subcommand="pull",
+        command_group="vcs",
+        parse_ok=True,
+        canonical="git pull",
+        template="git pull",
+        template_id="t1",
+        redacted=False,
+    )
+
+
+def test_sample_is_deterministic_across_insert_order(tmp_path: Path) -> None:
+    """同一组 (failure_kind, program) 的 sample 不受插入顺序影响。
+
+    换输入顺序 / 重复执行两次，sample 必须完全一致 —— `any_value` 做不到，
+    它从哪一行取值不定。修复按 `started_at, call_id` 取确定性代表行。
+    """
+    records = [
+        _failed_record(1, "2026-08-01", "snippet-first"),
+        _failed_record(2, "2026-08-03", "snippet-third"),
+        _failed_record(3, "2026-08-02", "snippet-second"),
+    ]
+    forward = tmp_path / "forward.duckdb"
+    reversed_path = tmp_path / "reversed.duckdb"
+    write_commands(forward, records)
+    write_commands(reversed_path, list(reversed(records)))
+
+    def sample(db: Path) -> tuple[tuple[Any, ...], ...]:
+        conn = duckdb.connect(str(db), read_only=True)
+        try:
+            return Q.failure_by_kind_and_program(conn, STATUS_ONLY).rows
+        finally:
+            conn.close()
+
+    # 换输入顺序结果一致。
+    assert sample(forward) == sample(reversed_path)
+    # 同一批数据重复查询也一致。
+    assert sample(forward) == sample(forward)
+    # 代表行是按 started_at 最早的 record 的 snippet。
+    assert sample(forward)[0][-1] == "snippet-first"

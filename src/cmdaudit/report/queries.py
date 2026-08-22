@@ -20,6 +20,14 @@ from cmdaudit.report.scope import DURATION_GUARD, Scope
 #: 耗时统计的过滤条件，见 scope.DURATION_GUARD。
 _PERCENTILE_GUARD: Final[str] = DURATION_GUARD
 
+#: 每个分组取一条确定性代表行，供 sample 类展示列使用。
+#: `any_value` 从哪一行取值不定，同一批数据重复查询可能给出不同样本；
+#: 改成按 `started_at, call_id` 排序取第一条，换输入顺序结果也一致。
+#: 代表行只是抽样展示，不是聚合数字的一部分 —— 聚合数字（count/sum）才可复现。
+_DETERMINISTIC_SAMPLE: Final[str] = (
+    "first(error_snippet ORDER BY started_at NULLS LAST, call_id)"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Table:
@@ -48,7 +56,7 @@ SELECT failure_kind,
        count(*)                        AS failures,
        count(DISTINCT agent)           AS agents,
        count(DISTINCT project)         AS projects,
-       any_value(error_snippet)         AS sample
+       {_DETERMINISTIC_SAMPLE}         AS sample
 FROM commands
 WHERE status = 'failed'
 GROUP BY failure_kind, program
@@ -64,7 +72,8 @@ LIMIT {limit}
         sql=sql,
         note=(
             "按可落地规则排序的主表：同一 program 反复以同一 failure_kind 失败，"
-            "才值得写进 AGENTS.md。"
+            "才值得写进 AGENTS.md。failures/agents/projects 是可复现的聚合数字，"
+            "sample 是按 started_at 取的第一条代表性报错，只作抽样展示。"
         ),
     )
 
@@ -156,7 +165,7 @@ SELECT failure_kind,
        program,
        count(*)                                        AS failures,
        round(sum(COALESCE(duration_s, 0)), 1)          AS observed_s,
-       any_value(error_snippet)                        AS sample
+       {_DETERMINISTIC_SAMPLE}                         AS sample
 FROM commands
 WHERE status = 'failed'
   AND failure_kind IN ('timeout', 'network')
@@ -173,7 +182,8 @@ LIMIT {limit}
         sql=sql,
         note=(
             "observed_s 是这些失败已记录到的耗时之和，混合了多种 duration_source，"
-            "只用于粗略量级判断，不可当精确损耗引用。"
+            "只用于粗略量级判断，不可当精确损耗引用。sample 是按 started_at 取的"
+            "第一条代表性报错，只作抽样展示。"
         ),
     )
 
