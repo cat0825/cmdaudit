@@ -18,11 +18,13 @@ import { EASE_FAST, SPRING_DRAWER } from "../lib/motion";
 export function DetailDrawer({
   finding,
   entry,
+  jumpEnabled,
   onClose,
   onPatch,
 }: {
   finding: Finding | null;
   entry: TriageEntry;
+  jumpEnabled: boolean;
   onClose: () => void;
   onPatch: (patch: Partial<TriageEntry>) => void;
 }) {
@@ -193,10 +195,14 @@ export function DetailDrawer({
               className="flex items-center justify-between gap-3 border-t px-5 py-2.5 text-[10.5px]"
               style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
             >
-              <span className="flex items-center gap-1.5">
-                <Kbd>J</Kbd>
-                <Kbd>K</Kbd> 上下条
-              </span>
+              {jumpEnabled ? (
+                <span className="flex items-center gap-1.5">
+                  <Kbd>J</Kbd>
+                  <Kbd>K</Kbd> 上下条
+                </span>
+              ) : (
+                <span />
+              )}
               <span className="flex items-center gap-1.5">
                 <Kbd>Esc</Kbd> 关闭
               </span>
