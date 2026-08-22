@@ -86,6 +86,10 @@ export function BoardView({
                       const slot = Number.parseInt(event.key, 10);
                       if (slot >= 1 && slot <= TRIAGE_STATUSES.length) {
                         event.preventDefault();
+                        // 卡片在 1–4 上已消费该按键：必须拦掉冒泡，
+                        // 否则 window 级 handler 会用同样的数字再改一次
+                        // openId/selectedId 指向的另一条 finding。
+                        event.stopPropagation();
                         onSetStatus(finding.finding_id, TRIAGE_STATUSES[slot - 1]!);
                       }
                     }}
