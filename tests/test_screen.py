@@ -182,3 +182,74 @@ def test_empty_database_yields_no_candidates(tmp_path: Path) -> None:
         assert payload["candidates"] == []
     finally:
         conn.close()
+
+
+def test_repeated_failures_kind_and_sample_are_deterministic(tmp_path: Path) -> None:
+    """同一命令形状的 kind/sample 不受插入顺序影响。
+
+    `any_value` 从哪一行取值不定，重复查询可能给出不同 dominant_failure_kind。
+    """
+    from cmdaudit.models import CommandRecord
+    from cmdaudit.screen.rules import repeated_failures
+
+    def record(call_id: int, started_at: str, kind: str, snippet: str) -> CommandRecord:
+        return CommandRecord(
+            session_id="s",
+            agent="codex",
+            project="p",
+            call_id=call_id,
+            slot=0,
+            started_at=started_at,
+            tool_name="exec_command",
+            command="git pull",
+            workdir=None,
+            input_kind="cmd",
+            duration_s=None,
+            duration_source="unknown",
+            duration_truncated=False,
+            exit_code=1 if kind == "other" else 128,
+            status="failed",
+            status_source="exit_code",
+            failure_kind=kind,
+            error_snippet=snippet,
+            program="git",
+            programs=("git",),
+            subcommand="pull",
+            command_group="vcs",
+            parse_ok=True,
+            canonical="git pull",
+            template="git pull",
+            template_id="t1",
+            redacted=False,
+        )
+
+    rows = [
+        record(1, "2026-08-01", "network", "snippet-a"),
+        record(2, "2026-08-02", "timeout", "snippet-b"),
+        record(3, "2026-08-03", "network", "snippet-c"),
+        record(4, "2026-08-04", "network", "snippet-d"),
+        record(5, "2026-08-05", "timeout", "snippet-e"),
+        record(6, "2026-08-06", "network", "snippet-f"),
+    ]
+    forward = tmp_path / "forward.duckdb"
+    reversed_path = tmp_path / "reversed.duckdb"
+    write_commands(forward, rows)
+    write_commands(reversed_path, list(reversed(rows)))
+
+    def observed(db: Path) -> list[tuple[str, str]]:
+        conn = duckdb.connect(str(db), read_only=True)
+        try:
+            candidates = repeated_failures(conn, 10)
+        finally:
+            conn.close()
+        assert candidates
+        return [
+            (str(item.observed["dominant_failure_kind"]), str(item.observed["error_sample"]))
+            for item in candidates
+        ]
+
+    # 换输入顺序结果一致，且代表行是失败行里最早的一条。
+    first = observed(forward)
+    assert observed(forward) == first
+    assert observed(reversed_path) == first
+    assert first[0] == ("network", "snippet-a")

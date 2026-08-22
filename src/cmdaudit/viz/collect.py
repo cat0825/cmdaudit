@@ -497,10 +497,13 @@ def _findings(
             SELECT template_id,
                    COALESCE(failure_kind, 'unknown') AS failure_kind,
                    count(*) AS failures,
-                   any_value(template) AS template,
-                   any_value(program) AS program,
                    min(started_at) AS first_seen,
-                   max(started_at) AS last_seen
+                   max(started_at) AS last_seen,
+                   -- 每个 (template_id, failure_kind) 组取一条确定性代表行，
+                   -- 它的 template/program 就是这个 finding 的展示值。
+                   -- any_value 从哪一行取值不定，同批数据重复查询可能给不同模板。
+                   first(template ORDER BY started_at NULLS LAST, call_id) AS template,
+                   first(program  ORDER BY started_at NULLS LAST, call_id) AS program
             FROM commands
             WHERE status = 'failed'
             GROUP BY 1, 2

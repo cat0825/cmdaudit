@@ -284,6 +284,56 @@ def test_payload_dashboard_uses_real_aggregations(payload: Payload) -> None:
     assert payload.dashboard.failures_by_kind
 
 
+def test_findings_template_and_program_are_deterministic(tmp_path: Path) -> None:
+    """finding 的 template/program 必须是确定性的代表行，不随查询漂移。"""
+    from cmdaudit.store import SCHEMA
+
+    db_path = tmp_path / "commands.duckdb"
+    conn = duckdb.connect(str(db_path))
+    insert = (
+        "INSERT INTO commands VALUES ("
+        + ", ".join("?" for _ in range(27))
+        + ")"
+    )
+
+    def row(call_id: int, started_at: str, command: str, snippet: str, program: str) -> tuple:
+        return (
+            "s", "codex", "p", call_id, 0, started_at, "exec_command", command, None,
+            "cmd", None, "unknown", False, 1, "failed", "exit_code", "network", snippet,
+            program, program, None, "test", True, command, command, "tid-shared", False,
+        )
+
+    try:
+        conn.execute(SCHEMA)
+        conn.execute("DELETE FROM commands")
+        conn.executemany(
+            insert,
+            [
+                # 同一 template_id 组内三行，template/program 不同：
+                # any_value 会漂，first(... ORDER BY started_at, call_id) 不会。
+                row(1, "2026-08-01", "npm run build", "a", "npm"),
+                row(2, "2026-08-02", "npm run build 2", "b", "npm2"),
+                row(3, "2026-08-03", "npm run build 2", "c", "npm2"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        first = collect_payload(conn, source_db=str(db_path), generated_at="t1").findings
+        second = collect_payload(conn, source_db=str(db_path), generated_at="t2").findings
+    finally:
+        conn.close()
+
+    assert first == second
+    # 代表行是组内最早的一条：template/program 取 call_id=1 那行。
+    finding = first[0]
+    assert finding.finding_id.startswith("tid-shared")
+    assert finding.template == "npm run build"
+    assert finding.program == "npm"
+
+
 def test_rendered_workbench_contains_product_controls(payload: Payload) -> None:
     """交互面在编译外壳里，标签文本可断言；缺了说明外壳没重新构建。"""
     html = render_html(payload)

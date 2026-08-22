@@ -25,6 +25,16 @@ MIN_RUNS: Final[int] = 5
 #: 高失败率阈值。
 HIGH_FAILURE_RATE: Final[float] = 0.4
 
+#: 每个分组取一条确定性代表行：优先失败行、再按 `started_at, call_id`。
+#: `any_value` 从哪一行取值不定，同批数据重复查询可能给出不同样本；
+#: 代表行只是抽样展示，候选里的 count/rate 才是可复现的聚合数字。
+_DETERMINISTIC_KIND: Final[str] = (
+    "first(failure_kind ORDER BY (status = 'failed') DESC, started_at NULLS LAST, call_id)"
+)
+_DETERMINISTIC_SAMPLE: Final[str] = (
+    "first(error_snippet ORDER BY (status = 'failed') DESC, started_at NULLS LAST, call_id)"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Rule:
@@ -54,8 +64,8 @@ SELECT canonical,
        count(*)                                            AS decided_runs,
        sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)   AS failures,
        count(DISTINCT project)                             AS projects,
-       any_value(failure_kind)                             AS kind,
-       any_value(error_snippet)                            AS sample
+       {_DETERMINISTIC_KIND}                               AS kind,
+       {_DETERMINISTIC_SAMPLE}                             AS sample
 FROM commands
 WHERE status IN ('ok', 'failed')
 GROUP BY canonical, program
@@ -115,7 +125,7 @@ SELECT canonical,
        failure_kind,
        count(*)                               AS failures,
        count(DISTINCT project)                AS projects,
-       any_value(error_snippet)               AS sample
+       {_DETERMINISTIC_SAMPLE}                AS sample
 FROM commands
 WHERE status = 'failed'
   AND failure_kind IN ('timeout', 'network')
