@@ -104,12 +104,14 @@ _TEXT_FAILURE: Final[re.Pattern[str]] = re.compile(
 _SNIPPET_LIMIT: Final[int] = 400
 
 #: 这些程序用退出码 1 表示「查无结果」，不是错误。
-#: 实测 rg 95 次、find 36 次、grep 8 次被误判为失败，
+#: 实测 rg 95 次、grep 8 次被误判为失败，
 #: 这些误判会让 rg 出现在「最容易失败的程序」榜单前列。
+#: find 不在此列：GNU/BSD 的 find 无匹配时返回 0，退出码 1 是遍历/权限/`-exec`
+#: 错误（例如 `find: '/nope': No such file or directory`），是真失败。
 _NO_MATCH_PROGRAMS: Final[frozenset[str]] = frozenset(
     {
         # 搜索类：退出码 1 = 没找到匹配。
-        "rg", "grep", "egrep", "fgrep", "ag", "ack", "fd", "find",
+        "rg", "grep", "egrep", "fgrep", "ag", "ack", "fd",
         # 比较类：退出码 1 = 有差异，这是它的正常答案。
         "diff", "cmp", "test",
         # 探测类：退出码 1 = 未安装。`which pandoc` 返回 1 是一次成功的探测
