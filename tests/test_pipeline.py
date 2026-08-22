@@ -124,6 +124,20 @@ def test_test_entries_land_in_test_group(command: str, expected_group: str) -> N
     assert records[0].command_group == expected_group
 
 
+def test_command_v_probe_pipeline_status() -> None:
+    """`command -v codex` 退出码 1 走完整链路要判 no_match。
+
+    病根在 pipeline：parse_programs 把 command 当包装器剥掉后，
+    primary 是被探测的程序名，导致 `_NO_MATCH_PROGRAMS` 里的 command
+    永远命不中。修复是把原始命令一起传进 decide_outcome。
+    """
+    call = _call("command -v codex", result_content="Process exited with code 1\ncodex not found")
+    records = list(build_records([call]))
+    assert records[0].program == "codex"
+    assert records[0].status == "no_match"
+    assert records[0].failure_kind is None
+
+
 def test_roundtrip_through_duckdb(tmp_path: Path) -> None:
     db_path = tmp_path / "commands.duckdb"
     records = list(build_records(load_fixture("raw_calls.json")))

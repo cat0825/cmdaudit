@@ -124,6 +124,15 @@ _NO_MATCH_PROGRAMS: Final[frozenset[str]] = frozenset(
 #: （例如 rg 的 2 表示用法错误）。
 _NO_MATCH_EXIT_CODE: Final[int] = 1
 
+#: 探测类：`command -v|-V <x>` 返回 1 是「未安装」的否定答案。
+#: parse_programs 会把 `command` 当包装器剥掉，primary 是被探测的程序名，
+#: 所以这里只能靠原始命令文本识别，primary 反而帮不上忙。
+#: 锚点要求 `command` 是一条简单命令的首词（行首或分隔符之后），
+#: 否则 `echo command -v x` 里的 command 只是 echo 的参数。
+_RE_PROBE: Final[re.Pattern[str]] = re.compile(
+    r"(?:^|[;&|(])\s*command[ \t]+-[vV][ \t]+", re.IGNORECASE
+)
+
 
 def parse_exit_code(result_content: str | None) -> int | None:
     if not result_content:
@@ -194,20 +203,32 @@ def _snippet(text: str | None) -> str | None:
     return body[-_SNIPPET_LIMIT:].strip() or None
 
 
-def is_no_match(program: str, exit_code: int | None, text: str | None) -> bool:
+def is_no_match(
+    program: str, exit_code: int | None, text: str | None, command: str | None = None
+) -> bool:
     """判断这是不是「查无结果」而非失败。
 
     要求同时满足：程序属于搜索类、退出码恰好为 1、且输出里没有该程序自己的
     错误行（`rg: ...` 这类）。第三条排除了「用法写错」被当成查无结果的情况。
+    探测类 `command -v <x>` 的 primary 是被探测程序，不在 `_NO_MATCH_PROGRAMS`
+    里，只能靠原始命令文本识别（见 `_RE_PROBE`）。
     """
-    if program not in _NO_MATCH_PROGRAMS or exit_code != _NO_MATCH_EXIT_CODE:
+    if exit_code != _NO_MATCH_EXIT_CODE:
+        return False
+    if command and _RE_PROBE.search(command):
+        # `command -v codex` 返回 1 是一次成功的探测得到否定答案（未安装）。
+        return True
+    if program not in _NO_MATCH_PROGRAMS:
         return False
     own_error = re.search(rf"^\s*{re.escape(program)}:\s", text, re.MULTILINE) if text else None
     return own_error is None
 
 
 def decide_outcome(
-    result_content: str | None, result_status: str | None, program: str = ""
+    result_content: str | None,
+    result_status: str | None,
+    program: str = "",
+    command: str = "",
 ) -> Outcome:
     """三级判定。返回值的不变量由 Outcome 自身守住。"""
     exit_code = parse_exit_code(result_content)
@@ -216,7 +237,7 @@ def decide_outcome(
         if exit_code == 0:
             # 红线：退出码为 0 时不看文本，哪怕输出里全是 "error:"。
             return Outcome("ok", "exit_code", 0, None, None)
-        if is_no_match(program, exit_code, result_content):
+        if is_no_match(program, exit_code, result_content, command):
             return Outcome("no_match", "exit_code", exit_code, None, None)
         return Outcome(
             "failed",

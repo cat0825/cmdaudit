@@ -194,6 +194,26 @@ def test_probe_programs_exit_one_means_not_installed(program: str) -> None:
     assert decide_outcome(text, None, program).status == "no_match"
 
 
+@pytest.mark.parametrize(
+    ("text", "command", "expected_status"),
+    [
+        # `command -v <x>` 返回 1 是探测到未安装：primary 是被探测程序，
+        # 只能靠原始命令文本识别。
+        ("Process exited with code 1\ncodex not found", "command -v codex", "no_match"),
+        ("Process exited with code 1\ncodex not found", "command -V codex", "no_match"),
+        ("Process exited with code 1\ncodex not found", "cd /x && command -v codex", "no_match"),
+        # 探测到真安装：退出码 0 仍是 ok。
+        ("Process exited with code 0\n/usr/local/bin/codex", "command -v codex", "ok"),
+        # command 是 echo 的参数时不是探测，不误判。
+        ("Process exited with code 1\ncommand not found", "echo command -v codex", "failed"),
+    ],
+)
+def test_command_v_probe_is_no_match(
+    text: str, command: str, expected_status: str
+) -> None:
+    assert decide_outcome(text, None, "codex", command=command).status == expected_status
+
+
 @pytest.mark.parametrize("program", ["diff", "cmp"])
 def test_compare_programs_exit_one_means_difference(program: str) -> None:
     text = "Process exited with code 1\n< a\n> b"
