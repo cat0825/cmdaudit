@@ -84,6 +84,46 @@ def test_no_record_violates_the_exit_code_invariant() -> None:
     assert all(r.program for r in records)
 
 
+def _call(command: str, result_content: str | None = "Process exited with code 0\n") -> RawCall:
+    return RawCall(
+        call_id=200,
+        session_id="sess-test",
+        agent="codex",
+        project="demo",
+        message_ordinal=1,
+        call_index=0,
+        tool_name="exec_command",
+        tool_use_id="tu-test",
+        input_json=f'{{"cmd":"{command}"}}',
+        result_content=result_content,
+        result_status=None,
+        started_at="2026-08-19T10:00:00Z",
+        ended_at="2026-08-19T10:00:01Z",
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_group"),
+    [
+        # npm/cargo/go/python 的测试入口必须落到 test 组，report/screen 的
+        # group 聚合才不会被摊进 pkg/build/runtime。
+        ("npm test", "test"),
+        ("npm run test:e2e", "test"),
+        ("cargo test", "test"),
+        ("go test", "test"),
+        ("python -m pytest", "test"),
+        # 非测试子命令保持原分组。
+        ("npm install", "pkg"),
+        ("npm run typecheck", "pkg"),
+        ("cargo build", "build"),
+        ("python scripts/build.py", "runtime"),
+    ],
+)
+def test_test_entries_land_in_test_group(command: str, expected_group: str) -> None:
+    records = list(build_records([_call(command)]))
+    assert records[0].command_group == expected_group
+
+
 def test_roundtrip_through_duckdb(tmp_path: Path) -> None:
     db_path = tmp_path / "commands.duckdb"
     records = list(build_records(load_fixture("raw_calls.json")))

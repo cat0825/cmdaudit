@@ -47,8 +47,16 @@ def test_primary_program(command: str, expected_primary: str) -> None:
     [
         ("git log --oneline -12", ("git", "log")),
         ("gh pr view 118 -R o/r --json x", ("gh", "pr")),
-        ("npm run typecheck", ("npm", "run")),
+        # npm run <script>：script 名才是语义粒度，分得清 typecheck 与 build。
+        ("npm run typecheck", ("npm", "typecheck")),
+        ("npm run test:e2e", ("npm", "test:e2e")),
         ("cargo build --release", ("cargo", "build")),
+        # python -m 的模块是 subcommand。
+        ("python -m pytest", ("python", "pytest")),
+        # npx 是运行器，它后面跟的测试框架是 subcommand。
+        ("npx jest --ci", ("npx", "jest")),
+        # 裸 python script.py 的 script 不是 subcommand。
+        ("python scripts/build.py", ("python", None)),
         # 非子命令程序不该编造 subcommand。
         ("rg -n foo src", ("rg", None)),
     ],

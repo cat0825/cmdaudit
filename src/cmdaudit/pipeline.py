@@ -131,7 +131,7 @@ def build_records(
                 program=primary,
                 programs=programs,
                 subcommand=subcommand,
-                command_group=classify_group(primary, programs),
+                command_group=classify_group(primary, programs, subcommand),
                 parse_ok=parse_ok,
                 canonical=canonical,
                 template=template,

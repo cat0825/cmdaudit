@@ -7,9 +7,23 @@
 
 from __future__ import annotations
 
+import re
 from typing import Final
 
 CommandGroup = str
+
+#: 会跑测试的包管理器/运行器。`npx jest` 的 jest、`npm test` 的 test 都是测试入口。
+_PKG_RUNNERS: Final[frozenset[str]] = frozenset(
+    {"npm", "pnpm", "yarn", "bun", "npx", "cargo", "go", "python", "python3"}
+)
+
+#: 直接以运行器身份出现的测试框架。
+_TEST_RUNNERS: Final[frozenset[str]] = frozenset(
+    {"jest", "vitest", "playwright", "pytest", "unittest"}
+)
+
+#: npm script 的测试命名习惯：test / test:unit / test:e2e。typecheck 不算测试。
+_RE_TEST_SCRIPT: Final[re.Pattern[str]] = re.compile(r"^test(?:[:_-].*)?$", re.IGNORECASE)
 
 _GROUPS: Final[dict[str, tuple[str, ...]]] = {
     "wait": ("sleep", "wait", "watch"),
@@ -55,12 +69,23 @@ _PROGRAM_TO_GROUP: Final[dict[str, str]] = {
 GROUP_NAMES: Final[tuple[str, ...]] = (*_GROUPS.keys(), "other")
 
 
-def classify_group(program: str, programs: tuple[str, ...] = ()) -> CommandGroup:
+def classify_group(
+    program: str, programs: tuple[str, ...] = (), subcommand: str | None = None
+) -> CommandGroup:
     """主程序优先；主程序未知时看复合命令里是否有已知程序。
 
+    测试入口优先于分组表：`npm test` / `cargo test` / `python -m pytest`
+    这类命令要落到 `test` 组，否则测试时间会被摊进 pkg/build/runtime。
+    非测试子命令保持原分组（`npm install` 还是 pkg，`cargo build` 还是 build）。
     等待类特殊处理：只要主程序是 sleep 就归 wait，因为
     `sleep 180; tail -5 out.txt` 的实际成本全在等待上。
     """
+    if (
+        subcommand
+        and program in _PKG_RUNNERS
+        and (_RE_TEST_SCRIPT.match(subcommand) or subcommand in _TEST_RUNNERS)
+    ):
+        return "test"
     direct = _PROGRAM_TO_GROUP.get(program)
     if direct is not None:
         return direct

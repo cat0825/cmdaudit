@@ -29,6 +29,34 @@ def test_classify_group(program: str, programs: tuple[str, ...], expected: str) 
 
 
 @pytest.mark.parametrize(
+    ("program", "subcommand", "expected"),
+    [
+        # 测试入口优先于分组表。
+        ("npm", "test", "test"),
+        ("npm", "test:e2e", "test"),
+        ("npm", "typecheck", "pkg"),
+        ("npm", "build", "pkg"),
+        ("npm", None, "pkg"),
+        ("npx", "jest", "test"),
+        ("npx", "prettier", "other"),
+        ("cargo", "test", "test"),
+        ("cargo", "build", "build"),
+        ("go", "test", "test"),
+        ("go", "build", "build"),
+        ("python", "pytest", "test"),
+        ("python", "unittest", "test"),
+        ("python", "pip", "runtime"),
+        ("python", None, "runtime"),
+    ],
+)
+def test_classify_group_test_entries(
+    program: str, subcommand: str | None, expected: str
+) -> None:
+    """npm/cargo/go/python 的测试入口要落到 test 组，非测试子命令保持原分组。"""
+    assert classify_group(program, (), subcommand) == expected
+
+
+@pytest.mark.parametrize(
     "command",
     [
         'curl -H "Authorization: Bearer sk-ant-abcdefghij1234567890" https://x',
