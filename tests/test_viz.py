@@ -409,6 +409,38 @@ def test_build_viz_writes_a_self_contained_file(tmp_path: Path) -> None:
     assert "__CMDAUDIT_PAYLOAD__" not in text  # 占位符已被替换
 
 
+def test_wheel_ships_the_compiled_shell(tmp_path: Path) -> None:
+    """wheel 必须包含编译好的 shell.html，否则装包后 `cmdaudit viz` 不可用。
+
+    用 `--no-build-isolation` 走当前环境的 setuptools（dev 依赖里已声明），
+    离线即可构建，不依赖 PyPI。
+    """
+    import subprocess
+    import sys
+    import zipfile
+
+    repo_root = Path(__file__).resolve().parents[1]
+    wheel_dir = tmp_path / "wheel"
+    wheel_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable, "-m", "pip", "wheel", ".",
+            "--no-deps", "--no-build-isolation", "-w", str(wheel_dir),
+        ],
+        check=True,
+        capture_output=True,
+        cwd=repo_root,
+    )
+    wheels = list(wheel_dir.glob("*.whl"))
+    assert len(wheels) == 1
+    with zipfile.ZipFile(wheels[0]) as archive:
+        names = set(archive.namelist())
+        assert "cmdaudit/viz/shell.html" in names
+        shell = archive.read("cmdaudit/viz/shell.html").decode("utf-8")
+    # 外壳里必须有 payload 占位符，Python 侧注入才有落点。
+    assert "__CMDAUDIT_PAYLOAD__" in shell
+
+
 def test_findings_total_and_kinds_are_not_truncated(tmp_path: Path) -> None:
     """>MAX_FINDINGS 条 finding 时 KPI 用未截断总数，失败构成返回全部类型。"""
     from cmdaudit.store import SCHEMA
