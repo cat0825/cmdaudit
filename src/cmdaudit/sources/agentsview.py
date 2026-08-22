@@ -41,6 +41,20 @@ _REQUIRED_COLUMNS: Final[dict[str, frozenset[str]]] = {
     "tool_result_events": frozenset({"session_id", "tool_use_id", "status"}),
 }
 
+#: 同一个 tool_use_id 可能有多条 result event（重试/续传），状态要按失败优先聚合。
+#: `min(status)` 按字典序会让 `min('completed','errored') == 'completed'`，
+#: 歧义事件偏成功。这里显式映射成整数优先级再取最高：
+#: errored/failed/error/failure > interrupted/aborted > completed/success/ok > 未知。
+#: 未知值保留原字符串给下游单独可观测，不静默归成功。
+_STATUS_PRIORITY: Final[str] = """
+CASE
+    WHEN lower(status) IN ('errored', 'error', 'failed', 'failure') THEN 3
+    WHEN lower(status) IN ('interrupted', 'aborted') THEN 2
+    WHEN lower(status) IN ('completed', 'success', 'ok') THEN 1
+    ELSE 0
+END
+"""
+
 _QUERY: Final[str] = """
 WITH turn AS (
     SELECT
@@ -53,12 +67,19 @@ WITH turn AS (
     FROM messages AS m
 ),
 res AS (
-    SELECT tool_use_id, min(status) AS status
-    FROM tool_result_events
-    WHERE tool_use_id IS NOT NULL
-      AND status IS NOT NULL
-      AND status != ''
-    GROUP BY tool_use_id
+    SELECT tool_use_id, status
+    FROM (
+        SELECT tool_use_id, status,
+               ROW_NUMBER() OVER (
+                   PARTITION BY tool_use_id
+                   ORDER BY """ + _STATUS_PRIORITY + """ DESC, rowid DESC
+               ) AS rn
+        FROM tool_result_events
+        WHERE tool_use_id IS NOT NULL
+          AND status IS NOT NULL
+          AND status != ''
+    )
+    WHERE rn = 1
 )
 SELECT
     tc.id,
