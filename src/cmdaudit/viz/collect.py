@@ -482,6 +482,25 @@ def _duration_profile(conn: duckdb.DuckDBPyConnection) -> DurationProfile:
     )
 
 
+def _findings_total(conn: duckdb.DuckDBPyConnection) -> int:
+    """未截断的 finding 条数（与 `_findings` 同口径，去掉 LIMIT）。
+
+    KPI 必须用它而不是 `len(findings)`：MAX_FINDINGS 截断时后者会静默少报。
+    """
+    row = conn.execute(
+        f"""
+        SELECT count(*) FROM (
+            SELECT template_id, COALESCE(failure_kind, 'unknown') AS failure_kind
+            FROM commands
+            WHERE status = 'failed'
+            GROUP BY 1, 2
+            HAVING count(*) >= {MIN_FINDING_FAILURES}
+        )
+        """
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def _findings(
     conn: duckdb.DuckDBPyConnection, known: frozenset[str]
 ) -> tuple[Finding, ...]:
@@ -605,7 +624,7 @@ def _dashboard(conn: duckdb.DuckDBPyConnection) -> Dashboard:
         (str(kind) if kind is not None else 'unknown', int(count))
         for kind, count in conn.execute(
             """SELECT failure_kind, count(*) FROM commands WHERE status = 'failed'
-               GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 6"""
+               GROUP BY 1 ORDER BY 2 DESC, 1"""
         ).fetchall()
     )
     agents = tuple(
@@ -644,6 +663,7 @@ def collect_payload(
         source_db=source_db,
         coverage=collect_coverage(conn),
         dashboard=_dashboard(conn),
+        findings_total=_findings_total(conn),
         findings=_findings(conn, known),
         tracks=(_failure_track(conn, known), _duration_track(conn, known)),
         candidates=candidates,

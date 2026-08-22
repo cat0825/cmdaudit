@@ -68,8 +68,11 @@ export function OverviewView({
     },
     {
       label: "复发失败模式",
-      value: formatCount(findings.length),
-      foot: "同一命令模板 × 失败类型 ≥2 次",
+      value: formatCount(payload.findings_total),
+      foot:
+        payload.findings_total > findings.length
+          ? `共 ${formatCount(payload.findings_total)} 条，仅展示前 ${formatCount(findings.length)} 条（省略 ${formatCount(payload.findings_total - findings.length)} 条）`
+          : "同一命令模板 × 失败类型 ≥2 次",
       accent: "var(--color-warn-400)",
     },
     {
