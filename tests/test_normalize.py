@@ -48,12 +48,43 @@ def test_credentials_are_redacted(command: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
+        # `_` 也是词字符，`\b` 锚点会放过 `GITHUB_TOKEN=` 这类变量名前缀。
+        "export GITHUB_TOKEN=ghp_fake00000000000000",
+        "NPM_TOKEN=npm_abcdef0123456789abcdef0123456789abcdef",
+        "export MY_SERVICE_API_KEY=skfake0123456789abcdef",
+        "export STRIPE_SECRET_KEY=sk_fake_0000000000000000",
+        # Slack / npm / HuggingFace 令牌前缀。
+        "curl -H 'Authorization: Bearer xoxb-123456789012345678901234' https://slack.com",
+        "curl -H 'Authorization: Bearer xoxp-12345678901234567890-12345678901234567890-abcdefghijkl' https://slack.com",  # noqa: E501
+        "curl -H 'Authorization: Bearer hf_abcdefghijklmnopqrstuvwxyz123456' https://hf.co",
+        # 选项形式。
+        "aws s3 cp a.txt s3://b --token=faketoken123456",
+        "curl --token faketoken123456 https://x",
+    ],
+)
+def test_prefixed_and_option_credentials_are_redacted(command: str) -> None:
+    """`*_TOKEN` / `*_API_KEY` / `*_SECRET` 前缀与 `--token` 选项都要脱敏。"""
+    out, hit = redact(command)
+    assert hit
+    assert "REDACTED" in out
+    # 凭据本体必须消失，只留前缀。
+    for fragment in ("ghp_fake", "npm_abcdef", "skfake", "sk_fake", "xoxb-1234", "faketoken123456"):
+        assert fragment not in out
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
         # -p 是路径不是密码；误伤会连带破坏程序名解析。
         "mkdir -p /Users/x/papers",
         # -p 是端口。
         "redis-cli -h h -p 6379 ping",
         "psql -h h -p 5432 -U u db",
         "ssh -p 2222 host",
+        # 选项里含关键词但本身不是凭据。
+        "git push --set-upstream origin main",
+        "docker service create --secret config-secret redis",
+        "npm run build -- --flag",
         "echo hello world",
     ],
 )
