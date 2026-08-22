@@ -65,8 +65,19 @@ _SUBCOMMAND_PROGRAMS: Final[frozenset[str]] = frozenset(
         "swift",
         "conda",
         "make",
+        "npx",
     }
 )
+
+#: 用 `run <script>` 执行 npm script 的包管理器。script 名才是语义粒度：
+#: 只抽到 run 分不清 `npm run build` 与 `npm run typecheck`（耗时差一倍以上）。
+_RUN_SCRIPT_PROGRAMS: Final[frozenset[str]] = frozenset({"npm", "pnpm", "yarn", "bun"})
+
+#: `python -m <module>` 的模块名是测试入口判定要用的 subcommand。
+_PYTHON_PROGRAMS: Final[frozenset[str]] = frozenset({"python", "python3"})
+
+#: npm script 名允许 `:`（test:e2e）、`@`（scope）等字符，比程序名宽。
+_RE_SCRIPT_NAME: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_@][A-Za-z0-9_@:./+\-]*$")
 
 #: 会吃掉下一个参数的选项集。`--opt=value` 自带值不在此列，
 #: 解析时先按 `=` 短路。未知选项保守降级：宁可 subcommand 取 None，
@@ -177,6 +188,22 @@ def _resolve(words: list[str]) -> tuple[str, str | None]:
                 cleaned = words[i].strip().strip("\"'")
                 if _RE_PLAUSIBLE_PROGRAM.match(cleaned):
                     sub = cleaned
+                    # `npm run <script>`：script 名才是语义粒度，用来判定测试入口。
+                    if candidate in _RUN_SCRIPT_PROGRAMS and cleaned == "run":
+                        j = _skip_options(words, i + 1, frozenset())
+                        if j < len(words):
+                            script = words[j].strip().strip("\"'")
+                            if _RE_SCRIPT_NAME.match(script):
+                                sub = script
+        elif candidate in _PYTHON_PROGRAMS:
+            # `python -m pytest`：-m 后的模块是测试入口判定要用的 subcommand；
+            # 裸 `python script.py` 里的 script 不是 subcommand，保持 None。
+            for k in range(index + 1, len(words)):
+                if words[k] == "-m" and k + 1 < len(words):
+                    module = words[k + 1].strip().strip("\"'")
+                    if module and not module.startswith("-"):
+                        sub = module
+                    break
         return candidate, sub
     return wrapper_seen, None
 
