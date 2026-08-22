@@ -11,7 +11,7 @@ import { QueueView } from "./views/QueueView";
 import { BoardView } from "./views/BoardView";
 import { DurationView, EvidenceView } from "./views/TrackView";
 import { CandidatesView } from "./views/CandidatesView";
-import { isViewId, type ViewId } from "./lib/views";
+import { isViewId, VIEWS, type ViewId } from "./lib/views";
 import { useTheme } from "./lib/theme";
 import { VIEW_FADE } from "./lib/motion";
 import {
@@ -148,25 +148,26 @@ export function App({ payload }: { payload: Payload }) {
           onOpenPalette={() => setPaletteOpen(true)}
         />
 
-        {/* 窄屏导航：轨道换成横向滚动条，不做汉堡菜单 —— 六个视图值得常驻可见。 */}
+        {/* 窄屏导航：轨道换成横向滚动条，不做汉堡菜单 —— 六个视图值得常驻可见。
+            渲染中文 label 而不是内部路由 id，可访问名称才有意义。 */}
         <nav
           className="sticky top-[60px] z-10 flex gap-1 overflow-x-auto border-b px-4 py-2 lg:hidden"
           style={{ borderColor: "var(--border)", background: "var(--bg)" }}
         >
-          {(["overview", "queue", "board", "duration", "candidates", "evidence"] as ViewId[]).map((id) => (
+          {VIEWS.map((item) => (
             <button
-              key={id}
+              key={item.id}
               type="button"
-              onClick={() => setView(id)}
-              aria-current={view === id ? "page" : undefined}
+              onClick={() => setView(item.id)}
+              aria-current={view === item.id ? "page" : undefined}
               className="shrink-0 rounded-lg border px-2.5 py-1 text-[11.5px]"
               style={{
-                borderColor: view === id ? "color-mix(in oklab, var(--color-accent-400) 42%, transparent)" : "var(--border)",
-                color: view === id ? "var(--color-accent-500)" : "var(--text-muted)",
-                background: view === id ? "color-mix(in oklab, var(--color-accent-400) 10%, transparent)" : "transparent",
+                borderColor: view === item.id ? "color-mix(in oklab, var(--color-accent-400) 42%, transparent)" : "var(--border)",
+                color: view === item.id ? "var(--color-accent-500)" : "var(--text-muted)",
+                background: view === item.id ? "color-mix(in oklab, var(--color-accent-400) 10%, transparent)" : "transparent",
               }}
             >
-              {id}
+              {item.label}
             </button>
           ))}
         </nav>
@@ -206,6 +207,7 @@ export function App({ payload }: { payload: Payload }) {
       <DetailDrawer
         finding={openFindingObject}
         entry={entryFor(triage, openId ?? "")}
+        jumpEnabled={view === "queue"}
         onClose={() => setOpenId(null)}
         onPatch={(next) => {
           if (openId) patch([openId], next);

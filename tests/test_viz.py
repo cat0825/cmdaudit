@@ -343,6 +343,18 @@ def test_rendered_workbench_contains_product_controls(payload: Payload) -> None:
         assert marker in html, marker
 
 
+def test_rendered_shell_uses_chinese_nav_labels(payload: Payload) -> None:
+    """窄屏导航必须渲染中文 label（可访问名称），不能是内部路由 id。
+
+    可访问名称来自 `web/src/lib/views.ts` 的 VIEWS，编译进外壳后应可断言。
+    aria-current="page" 是当前视图按钮的选中态标注。
+    """
+    html = render_html(payload)
+    for label in ("总览", "失败模式", "处理看板", "耗时分析", "验证队列", "证据与口径"):
+        assert label in html, label
+    assert "aria-current" in html
+
+
 def test_rendered_page_prints_both_scopes_and_caveats(payload: Payload) -> None:
     """口径不能只存在于 payload：外壳必须有打印它的模板和不可相加的告示。"""
     html = render_html(payload)
