@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, get_args
 
 DurationSource = Literal["self_reported", "turn_delta", "batch_shared", "unknown"]
@@ -109,7 +109,11 @@ class Outcome:
 
 @dataclass(frozen=True, slots=True)
 class CommandRecord:
-    """落库的一行。"""
+    """落库的一行。
+
+    构造期做跨字段校验，和 `Duration` / `Outcome` 同一套写法：
+    非法状态不可表达，而不是落库后才发现。
+    """
 
     session_id: str
     agent: str
@@ -141,4 +145,31 @@ class CommandRecord:
     template: str = ""
     template_id: str = ""
     redacted: bool = False
-    tags: tuple[str, ...] = field(default=())
+
+    def __post_init__(self) -> None:
+        if self.duration_source not in DURATION_SOURCES:
+            raise ValueError(f"未知 duration_source: {self.duration_source}")
+        if self.status not in STATUSES:
+            raise ValueError(f"未知 status: {self.status}")
+        if self.status_source not in STATUS_SOURCES:
+            raise ValueError(f"未知 status_source: {self.status_source}")
+        if self.failure_kind is not None and self.failure_kind not in FAILURE_KINDS:
+            raise ValueError(f"未知 failure_kind: {self.failure_kind}")
+        if self.duration_s is None and self.duration_source != "unknown":
+            raise ValueError(
+                f"耗时缺失时 duration_source 必须为 unknown，收到 {self.duration_source}"
+            )
+        if self.duration_s is not None:
+            if self.duration_source == "unknown":
+                raise ValueError("耗时存在时 duration_source 不能为 unknown")
+            if self.duration_s < 0:
+                raise ValueError(f"耗时不能为负: {self.duration_s}")
+        if self.status != "failed" and self.failure_kind is not None:
+            raise ValueError("只有 failed 才允许带 failure_kind")
+        if self.status == "failed" and self.failure_kind is None:
+            raise ValueError("failed 必须带 failure_kind")
+        # plan.md §3.3 的红线：exit_code=0 绝不判失败，也不可能是 no_match。
+        if self.exit_code == 0 and self.status != "ok":
+            raise ValueError(f"exit_code=0 必须 status=ok，收到 {self.status}")
+        if self.slot < 0:
+            raise ValueError(f"slot 不能为负: {self.slot}")
