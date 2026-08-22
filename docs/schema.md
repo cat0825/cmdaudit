@@ -22,8 +22,9 @@
 | `input_kind` | VARCHAR | 命令是从哪个键抽出的：`cmd` / `command` / `CommandLine` / `js_script` |
 | `duration_s` | DOUBLE | 见下方「耗时分级」 |
 | `duration_source` | VARCHAR | 耗时的证据等级，**读数前必须先看这一列** |
+| `duration_truncated` | BOOLEAN | 命令未跑完就被工具让出（`yield_time_ms` 到点），耗时是下界，不得进耗时排名与分位数 |
 | `exit_code` | BIGINT | 从输出里解析；用 BIGINT 因为 Windows 会给出 `0xC0000409` 这类值 |
-| `status` | VARCHAR | `ok` / `failed` / `unknown` |
+| `status` | VARCHAR | `ok` / `failed` / `no_match` / `unknown` |
 | `status_source` | VARCHAR | 状态是怎么定的：`exit_code` / `result_event` / `text_heuristic` / `none` |
 | `failure_kind` | VARCHAR | 仅 `failed` 时非空，见下方「失败归因」 |
 | `error_snippet` | VARCHAR | 错误片段，供人工核对；最长 400 字符 |
@@ -169,13 +170,18 @@
 ## 被排除的记录
 
 `extract_stats` 表与 `extract-stats.json` 记录每一类排除的条数，
-报告里要能解释所有去向：
+报告里要能解释所有去向。两者的键名一一对应；`extract-stats.json`
+额外带 `source_db`（数据源路径）与 `elapsed_s`（抽取耗时，浮点，
+不落 `extract_stats` 表）：
 
 | key | 含义 |
 |---|---|
 | `bash_tool_calls` | 源库 `category='Bash'` 的总行数 |
+| `raw_calls` | 进入抽取流程的调用数 |
 | `excluded_tool` | `write_stdin` / `apply_patch` 等不承载命令的工具 |
 | `no_command_key` | `input_json` 里没有任何命令键 |
 | `commands_written` | 实际落库条数 |
 | `parse_failed` | tree-sitter 解析失败、走降级路径的条数 |
 | `redacted` | 发生过脱敏替换的条数 |
+| `duration_truncated` | 耗时被工具让出截断的条数 |
+| `no_match` | 判定为「查无结果」（非失败）的条数 |

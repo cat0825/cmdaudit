@@ -229,3 +229,28 @@ def test_sample_is_deterministic_across_insert_order(tmp_path: Path) -> None:
     assert sample(forward) == sample(forward)
     # 代表行是按 started_at 最早的 record 的 snippet。
     assert sample(forward)[0][-1] == "snippet-first"
+
+
+def test_schema_doc_lists_every_store_column() -> None:
+    """docs/schema.md 的列清单必须与 store.SCHEMA 逐列一致，阻止文档漂移。
+
+    文档是人对表结构的唯一入口，漂了会让人按旧结构写查询。
+    """
+    from cmdaudit.store import SCHEMA
+
+    conn = duckdb.connect()
+    try:
+        conn.execute(SCHEMA)
+        actual = [str(row[0]) for row in conn.execute("DESCRIBE commands").fetchall()]
+    finally:
+        conn.close()
+
+    text = Path("docs/schema.md").read_text(encoding="utf-8")
+    section = text.split("## 列", 1)[1].split("\n## ", 1)[0]
+    documented = [
+        line.split("|")[1].strip().strip("`")
+        for line in section.splitlines()
+        if line.strip().startswith("|") and "---" not in line
+        and line.split("|")[1].strip() not in ("", "列")
+    ]
+    assert documented == actual

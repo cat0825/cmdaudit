@@ -26,7 +26,6 @@ class ExtractStats:
     raw_calls: int = 0
     excluded_tool: int = 0
     no_command_key: int = 0
-    commands: int = 0
     parse_failed: int = 0
     redacted: int = 0
     duration_truncated: int = 0
@@ -37,7 +36,6 @@ class ExtractStats:
             "raw_calls": self.raw_calls,
             "excluded_tool": self.excluded_tool,
             "no_command_key": self.no_command_key,
-            "commands": self.commands,
             "parse_failed": self.parse_failed,
             "redacted": self.redacted,
             "duration_truncated": self.duration_truncated,
@@ -110,7 +108,6 @@ def build_records(
                 counters.no_match += 1
             canonical = canonicalize(safe_command)
             template = template_engine.fit(safe_command)
-            counters.commands += 1
             yield CommandRecord(
                 session_id=call.session_id,
                 agent=call.agent,

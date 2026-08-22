@@ -71,7 +71,7 @@ atuin 记录 `duration` 和 `exit`，cmd-wrapped 做 shell 历史统计，
 |---|---|---|---|
 | 拆解 shell 命令、提取主程序 | **tree-sitter-bash** 0.25.1 | MIT | `bashlex` 是 **GPL-3.0**，会传染；`shlex` 遇到 `&&`/重定向/heredoc 就废 |
 | 命令模板聚类 | **Drain3** 0.9.11 (IBM) | MIT | 手写正则，规则会无限膨胀 |
-| 聚合查询 | **DuckDB** 1.5.5 | MIT | pandas 够用但 SQL 表达聚合更省代码 |
+| 聚合查询 | **DuckDB** 1.1.3 | MIT | pandas 够用但 SQL 表达聚合更省代码 |
 
 两个库都实测过。
 

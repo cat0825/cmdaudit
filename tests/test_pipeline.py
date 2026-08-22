@@ -54,7 +54,6 @@ def test_records_from_fixture() -> None:
     # 排除项都记了数，能在报告里解释去向。
     assert stats.excluded_tool == 1
     assert stats.no_command_key == 1
-    assert stats.commands == len(records)
 
 
 def test_batch_script_yields_per_slot_records() -> None:
