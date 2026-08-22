@@ -44,6 +44,13 @@ export function App({ payload }: { payload: Payload }) {
   useEffect(() => {
     window.location.hash = view;
   }, [view]);
+
+  // 选中项是队列视图的局部状态：切走即清空。否则在 Board/总览按 1–4
+  // 时，window 级 handler 会用 activeId 改写一条看不见的队列记录，
+  // 造成「一条在队列、一条在看板」的两处修改。
+  useEffect(() => {
+    if (view !== "queue") setSelectedId(null);
+  }, [view]);
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash.replace(/^#/, "");
