@@ -143,10 +143,11 @@ def test_language_level_network_errors(text: str, expected_kind: str) -> None:
 @pytest.mark.parametrize(
     ("program", "text", "expected_status"),
     [
-        # rg/grep/find 的退出码 1 是「查无结果」，一次成功的空查询。
+        # rg/grep 的退出码 1 是「查无结果」，一次成功的空查询。
         ("rg", "Process exited with code 1\nOutput:\n", "no_match"),
         ("grep", "Process exited with code 1\nOutput:\n", "no_match"),
-        ("find", "Process exited with code 1\nOutput:\n", "no_match"),
+        # find 不在此列：无匹配返回 0，退出码 1 是遍历/权限/`-exec` 错误。
+        ("find", "Process exited with code 1\nOutput:\n", "failed"),
         # 程序自己报错说明是用法问题，不是查无结果。
         ("rg", "Process exited with code 1\nrg: the literal is not allowed", "failed"),
         # 其他非零码是真错误（rg 的 2 是用法错误）。
@@ -158,6 +159,21 @@ def test_language_level_network_errors(text: str, expected_kind: str) -> None:
 )
 def test_no_match_is_not_failure(program: str, text: str, expected_status: str) -> None:
     assert decide_outcome(text, None, program).status == expected_status
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_status"),
+    [
+        # 带 `find:` 前缀的 exit 1 是遍历错误，不带前缀也一样是真失败。
+        ("Process exited with code 1\nfind: '/nope': No such file or directory", "failed"),
+        ("Process exited with code 1\nOutput:\n", "failed"),
+        # 无匹配时 find 返回 0，是成功。
+        ("Process exited with code 0\nOutput:\n", "ok"),
+    ],
+)
+def test_find_exit_one_is_a_real_failure(text: str, expected_status: str) -> None:
+    """GNU/BSD find 无匹配返回 0，exit 1 是遍历/权限/`-exec` 错误。"""
+    assert decide_outcome(text, None, "find").status == expected_status
 
 
 def test_no_match_carries_no_failure_kind() -> None:
