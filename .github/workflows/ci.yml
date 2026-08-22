@@ -21,3 +21,18 @@ jobs:
         run: mypy
       - name: Tests
         run: pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Frontend typecheck
+        run: npm ci --prefix web && npm run typecheck --prefix web
+      - name: Frontend build + shell.html 同步校验
+        run: |
+          npm run build --prefix web
+          cmp web/dist/index.html src/cmdaudit/viz/shell.html || {
+            echo "错误：web/dist/index.html 与 src/cmdaudit/viz/shell.html 不一致。"
+            echo "请运行 scripts/sync-shell.sh 重建外壳后重新提交。"
+            exit 1
+          }

@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==8.3.4", "ruff==0.9.2", "mypy==1.14.1"]
+# setuptools 供打包测试（test_wheel_ships_the_compiled_shell）离线构建 wheel。
+dev = ["pytest==8.3.4", "ruff==0.9.2", "mypy==1.14.1", "setuptools>=68"]
 
 [project.scripts]
 cmdaudit = "cmdaudit.cli:main"
