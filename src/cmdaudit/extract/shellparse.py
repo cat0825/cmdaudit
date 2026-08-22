@@ -68,6 +68,15 @@ _SUBCOMMAND_PROGRAMS: Final[frozenset[str]] = frozenset(
     }
 )
 
+#: 会吃掉下一个参数的选项集。`--opt=value` 自带值不在此列，
+#: 解析时先按 `=` 短路。未知选项保守降级：宁可 subcommand 取 None，
+#: 也不能把 option 的参数当程序名（`sudo -u postgres psql` 的 postgres 是 sudo 的用户名）。
+_OPTION_ARITY: Final[dict[str, frozenset[str]]] = {
+    "sudo": frozenset({"-u", "--user", "-g", "--group", "-h", "--host"}),
+    "git": frozenset({"-C", "-c"}),
+    "kubectl": frozenset({"-n", "--namespace", "--context"}),
+}
+
 #: 目录切换与环境设置类内建：有其他程序时不当主程序，但仍记进 programs。
 _TRANSPARENT: Final[frozenset[str]] = frozenset(
     {"cd", "pushd", "popd", "export", "set", "unset", "source", "alias", "shift"}
@@ -111,6 +120,27 @@ def _command_words(node: Node, src: bytes) -> list[str]:
     return words
 
 
+def _skip_options(words: list[str], index: int, arity: frozenset[str]) -> int:
+    """从 index 起跳过选项；arity 里的选项连它的参数一起跳过。
+
+    `--opt=value` 自带值，不额外吃参数。KEY=VALUE 前缀（变量赋值）也要跳过，
+    树解析可能把它们留在实义词序列里。
+    """
+    while index < len(words):
+        token = words[index]
+        if token.startswith("--") and "=" in token:
+            index += 1
+            continue
+        if token in arity:
+            index += 2
+            continue
+        if token.startswith("-") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", token) is not None:
+            index += 1
+            continue
+        break
+    return index
+
+
 def _resolve(words: list[str]) -> tuple[str, str | None]:
     """从实义词序列解析 (program, subcommand)，跳过包装器与其选项。
 
@@ -128,12 +158,8 @@ def _resolve(words: list[str]) -> tuple[str, str | None]:
             if not wrapper_seen:
                 wrapper_seen = candidate
             index += 1
-            # 跳过包装器自己的选项与 KEY=VALUE 前缀。
-            while index < len(words) and (
-                words[index].startswith("-")
-                or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[index]) is not None
-            ):
-                index += 1
+            # 跳过包装器自己的选项（含会吃参数的选项）。
+            index = _skip_options(words, index, _OPTION_ARITY.get(candidate, frozenset()))
             # `timeout 30 pytest` 这类：跳过包装器的位置参数。
             if (
                 candidate in _WRAPPERS_WITH_ARG
@@ -144,13 +170,13 @@ def _resolve(words: list[str]) -> tuple[str, str | None]:
             continue
         sub: str | None = None
         if candidate in _SUBCOMMAND_PROGRAMS:
-            for token in words[index + 1 :]:
-                cleaned = token.strip().strip("\"'")
-                if not cleaned or cleaned.startswith("-"):
-                    continue
+            # 选项（及其参数）不能当 subcommand：`git -C /repo status` 的 /repo
+            # 是 -C 的路径，`kubectl -n default get pods` 的 default 是 namespace。
+            i = _skip_options(words, index + 1, _OPTION_ARITY.get(candidate, frozenset()))
+            if i < len(words):
+                cleaned = words[i].strip().strip("\"'")
                 if _RE_PLAUSIBLE_PROGRAM.match(cleaned):
                     sub = cleaned
-                break
         return candidate, sub
     return wrapper_seen, None
 

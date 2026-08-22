@@ -58,6 +58,26 @@ def test_subcommand(command: str, expected: tuple[str, str | None]) -> None:
     assert (primary, sub) == expected
 
 
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        # sudo -u 会吃掉下一个参数：postgres 是用户名，不是主程序。
+        ("sudo -u postgres psql -c select", ("psql", None)),
+        # kubectl -n 会吃掉 default：get 才是 subcommand。
+        ("kubectl -n default get pods", ("kubectl", "get")),
+        # git -C 会吃掉 /repo：status 才是 subcommand。
+        ("git -C /repo status", ("git", "status")),
+        # --namespace=value 自带值，不额外吃参数。
+        ("kubectl --namespace=prod get svc", ("kubectl", "get")),
+    ],
+)
+def test_option_arity_eats_next_argument(command: str, expected: tuple[str, str | None]) -> None:
+    """带参数的选项（sudo -u / kubectl -n / git -C）不能把参数当程序名或 subcommand。"""
+    programs, primary, sub, _ = parse_programs(command)
+    assert (primary, sub) == expected
+    assert expected[0] in programs
+
+
 def test_heredoc_body_is_not_parsed_as_commands() -> None:
     programs, primary, _, _ = parse_programs("python3 - <<'PY'\n# comment\nprint(1)\nPY")
     assert primary == "python3"
