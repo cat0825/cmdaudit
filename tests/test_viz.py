@@ -19,6 +19,7 @@ from cmdaudit.store import write_commands
 from cmdaudit.viz.build import build_viz
 from cmdaudit.viz.collect import (
     MAX_CANDIDATES,
+    MAX_FINDINGS,
     SAMPLES_PER_ROW,
     UnknownColumn,
     _fetch_samples,
@@ -406,3 +407,58 @@ def test_build_viz_writes_a_self_contained_file(tmp_path: Path) -> None:
     assert text.rstrip().endswith("</html>")
     assert "<style" in text  # CSS 内联（Vite 产物带属性，不是裸 <style>）
     assert "__CMDAUDIT_PAYLOAD__" not in text  # 占位符已被替换
+
+
+def test_findings_total_and_kinds_are_not_truncated(tmp_path: Path) -> None:
+    """>MAX_FINDINGS 条 finding 时 KPI 用未截断总数，失败构成返回全部类型。"""
+    from cmdaudit.store import SCHEMA
+
+    kinds = (
+        "timeout",
+        "network",
+        "not_found",
+        "permission",
+        "build",
+        "test",
+        "interrupted",
+        "other",
+    )
+    db_path = tmp_path / "commands.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(SCHEMA)
+        conn.execute("DELETE FROM commands")
+        rows: list[tuple] = []
+        for group in range(MAX_FINDINGS + 10):
+            kind = kinds[group % len(kinds)]
+            for slot in (0, 1):
+                call_id = group * 2 + slot
+                command = f"npm run build-{group}"
+                rows.append(
+                    (
+                        "s", "codex", "p", call_id, 0, "2026-08-01", "exec_command",
+                        command, None, "cmd", None, "unknown", False, 1, "failed",
+                        "exit_code", kind, f"snippet-{group}", "npm", "npm", "run",
+                        "test", True, command, command, f"tid-{group}", False,
+                    )
+                )
+        conn.executemany(
+            "INSERT INTO commands VALUES (" + ", ".join("?" for _ in range(27)) + ")",
+            rows,
+        )
+    finally:
+        conn.close()
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    # KPI 数字用未截断总数；列表仍受 MAX_FINDINGS 约束。
+    assert payload.findings_total == MAX_FINDINGS + 10
+    assert len(payload.findings) == MAX_FINDINGS
+    # 失败构成返回全部 8 类（不能 LIMIT 6 静默截断），百分比合计才是 100%。
+    by_kind = dict(payload.dashboard.failures_by_kind)
+    assert set(by_kind) == set(kinds)
+    assert sum(by_kind.values()) == 2 * (MAX_FINDINGS + 10)

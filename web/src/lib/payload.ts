@@ -124,6 +124,8 @@ export interface Payload {
   source_db: string;
   coverage: Record<string, string | number | null>;
   tracks: Track[];
+  /** 未截断的 finding 总条数；`findings` 被 MAX_FINDINGS 截断时 KPI 必须用它。 */
+  findings_total: number;
   findings: Finding[];
   dashboard: Dashboard;
   candidates: Candidate[];
@@ -137,6 +139,7 @@ export const EMPTY_PAYLOAD: Payload = {
   source_db: "—",
   coverage: {},
   tracks: [],
+  findings_total: 0,
   findings: [],
   dashboard: {
     timeline: [],

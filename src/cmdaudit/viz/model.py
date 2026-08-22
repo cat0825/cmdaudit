@@ -192,6 +192,9 @@ class Payload:
     coverage: dict[str, Any]
     tracks: tuple[Track, ...]
     dashboard: Dashboard = field(default_factory=lambda: Dashboard((), (), (), None))
+    #: 未截断的 finding 总条数。`findings` 被 MAX_FINDINGS 截断时，
+    #: 页面 KPI 必须用这个总数而不是 `len(findings)`，否则会静默少报。
+    findings_total: int = 0
     findings: tuple[Finding, ...] = ()
     candidates: tuple[Candidate, ...] = ()
     candidate_note: str = ""
