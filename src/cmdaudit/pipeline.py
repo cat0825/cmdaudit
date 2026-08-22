@@ -103,7 +103,9 @@ def build_records(
             programs, primary, subcommand, parse_ok = parse_programs(safe_command)
             if not parse_ok:
                 counters.parse_failed += 1
-            outcome = decide_outcome(call.result_content, call.result_status, primary)
+            outcome = decide_outcome(
+                call.result_content, call.result_status, primary, command=safe_command
+            )
             if outcome.status == "no_match":
                 counters.no_match += 1
             canonical = canonicalize(safe_command)
