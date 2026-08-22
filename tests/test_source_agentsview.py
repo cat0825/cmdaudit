@@ -111,6 +111,47 @@ def test_limit_stops_early(tmp_path: Path) -> None:
         conn.close()
 
 
+def test_status_aggregation_is_failure_biased(tmp_path: Path) -> None:
+    """同一个 tool_use_id 的多条 result event 按失败优先聚合，不再 min(status)。
+
+    `min(status)` 按字典序会让 `min('completed','errored') == 'completed'`，
+    歧义事件偏成功。这里必须偏失败。
+    """
+    path = tmp_path / "sessions.db"
+    _build_db(path)
+    conn = sqlite3.connect(path)
+    try:
+        # 三个事件都挂 t1：completed < interrupted < errored，应取 errored。
+        conn.executemany(
+            "INSERT INTO tool_result_events VALUES (?, 's1', 't1', ?)",
+            [(2, "completed"), (3, "interrupted"), (4, "errored")],
+        )
+        # success + failed 应取 failed。
+        conn.executemany(
+            "INSERT INTO tool_result_events VALUES (?, 's1', 't2', ?)",
+            [(5, "success"), (6, "failed")],
+        )
+        # 空状态事件不产生证据，聚合结果应为 NULL，不得被当成成功。
+        conn.execute("INSERT INTO tool_result_events VALUES (7, 's1', 't4', '')")
+        conn.execute(
+            "INSERT INTO tool_calls VALUES (4, 3, 's1', 'Bash', 'Bash', 't4', "
+            "'{\"command\":\"ls\"}', 'ok', 0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    conn = open_readonly(path)
+    try:
+        calls = list(iter_raw_calls(conn))
+    finally:
+        conn.close()
+
+    by_id = {call.call_id: call for call in calls}
+    assert by_id[1].result_status == "errored"
+    assert by_id[2].result_status == "failed"
+    assert by_id[4].result_status is None
+
 def test_connection_is_read_only(tmp_path: Path) -> None:
     path = tmp_path / "sessions.db"
     _build_db(path)
