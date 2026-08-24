@@ -287,9 +287,120 @@ LIMIT {limit}
     return candidates
 
 
+#: 「命令根本没跑起来」的三类判据。
+#:
+#: 与其他规则的区别在验证成本：这三类的失败信号是 shell/OS 在执行**之前**
+#: 给出的，命令没有产生任何副作用。所以「有没有跑起来」是客观事实，
+#: 不需要 baseline/candidate 双跑，`manual_inspection` 足够。
+#:
+#: 判据全部落在 `error_snippet` 的固定串上，不做模糊匹配 ——
+#: 宁可漏掉一批，也不要把「跑起来但失败了」误判成「没跑起来」。
+PREVENTABLE_KINDS: Final[tuple[tuple[str, str, str, str], ...]] = (
+    (
+        "zsh_glob_unquoted",
+        "error_snippet LIKE '%no matches found%'",
+        "路径含 zsh 的 glob 元字符（`[` `]` `*` `?`）且未加引号，shell 在展开阶段就拒绝执行",
+        "把路径参数用单引号包起来，或对元字符转义",
+    ),
+    (
+        "command_not_found",
+        "(error_snippet LIKE '%command not found%'"
+        " OR error_snippet LIKE '%: not found%')",
+        "目标程序在当前 PATH 里不存在，命令未进入执行阶段",
+        "调用前用 `command -v` 探测，或改用项目内已声明的等价工具",
+    ),
+    (
+        "not_a_git_repo",
+        "error_snippet LIKE '%not a git repository%'",
+        "在非 git 工作目录里执行 git 子命令，git 未做任何操作即退出",
+        "先确认 cwd 在仓库内，或给 git 显式传 `-C <repo>`",
+    ),
+)
+
+
+def preventable_errors(conn: duckdb.DuckDBPyConnection, limit: int) -> list[Candidate]:
+    """命令根本没跑起来的失败：shell/OS 在执行前就拒绝了。
+
+    这条规则和其他四条的性质不同。`repeated_failures` 等规则筛出的是
+    「跑了但失败」，要判断该不该改必须做反事实实验；这里筛出的是
+    「压根没跑」—— 加引号、探测 PATH、确认 cwd 都不改变任务语义，
+    没有 trade-off 需要权衡，所以验证方式是 `manual_inspection`。
+
+    仍然输出待验证假设而非结论：规则只能证明这批调用没跑起来，
+    不能证明补上前置处理后 agent 的整体行为一定更好。
+    """
+    candidates: list[Candidate] = []
+    for kind, predicate, mechanism, remedy in PREVENTABLE_KINDS:
+        where = f"status = 'failed' AND error_snippet IS NOT NULL AND {predicate}"
+        # 先取该类的全库总量。`limit` 会截掉长尾形状，不报总数会让读者
+        # 把候选覆盖的次数当成该类的全部发生次数。
+        totals = conn.execute(
+            f"SELECT count(*), count(DISTINCT canonical) FROM commands WHERE {where}"
+        ).fetchone()
+        kind_total, kind_shapes = (int(totals[0]), int(totals[1])) if totals else (0, 0)
+        sql = f"""
+SELECT canonical,
+       program,
+       count(*)                    AS occurrences,
+       count(DISTINCT project)     AS projects,
+       count(DISTINCT agent)       AS agents,
+       {_DETERMINISTIC_SAMPLE}     AS sample
+FROM commands
+WHERE {where}
+GROUP BY canonical, program
+ORDER BY occurrences DESC, canonical
+LIMIT {limit}
+""".strip()
+        for shape, program, occurrences, projects, agents, sample in _rows(conn, sql):
+            candidates.append(
+                Candidate(
+                    candidate_id=_candidate_id(f"preventable:{kind}", str(shape)),
+                    source_rule="preventable_errors",
+                    command_shape=str(shape),
+                    program=str(program),
+                    observed={
+                        "preventable_kind": kind,
+                        "occurrences": occurrences,
+                        "projects": projects,
+                        "agents": agents,
+                        "kind_total_occurrences": kind_total,
+                        "kind_total_shapes": kind_shapes,
+                        "mechanism": mechanism,
+                        "error_sample": (str(sample)[:200] if sample else None),
+                    },
+                    hypothesis=(
+                        f"`{program}` 的这个形状有 {occurrences} 次因 {kind} 未能进入执行阶段"
+                        f"（{mechanism}）。疑似可由一条 AGENTS.md 约定消除："
+                        f"{remedy}。待验证该约定是否覆盖全部命中样本"
+                    ),
+                    verification=Verification(
+                        method="manual_inspection",
+                        design=(
+                            "逐条读命中样本的命令原文与错误输出，确认失败确实发生在"
+                            "执行之前（无部分副作用）；再确认候选约定套用到该原文上"
+                            "能让命令进入执行阶段，且不改变命令语义。"
+                            "两条都成立才算这条候选被证实。"
+                        ),
+                        oracle="manual_reading",
+                    ),
+                    priority=float(occurrences) * 0.5,
+                    caveats=(
+                        "判据是 error_snippet 固定串匹配，只召回明确报出该错误的记录，"
+                        "真实发生次数可能更高。",
+                        "「未进入执行阶段」由错误类型推断；复合命令里前半段"
+                        "可能已经执行，需按样本逐条确认。",
+                        f"该类全库共 {kind_total} 次命中 / {kind_shapes} 个形状，"
+                        f"本清单按 per_rule_limit 只列出头部，长尾未展开。",
+                    ),
+                )
+            )
+    return candidates
+
+
 ALL_RULES: Final[tuple[Rule, ...]] = (
     Rule("repeated_failures", "同一命令形状反复失败", repeated_failures),
     Rule("timeout_and_network_clusters", "超时与网络失败聚集", timeout_and_network_clusters),
     Rule("duration_hotspots", "耗时头部形状", duration_hotspots),
     Rule("wait_polling", "固定间隔轮询等待", wait_polling),
+    Rule("preventable_errors", "命令未进入执行阶段的可预防错误", preventable_errors),
 )

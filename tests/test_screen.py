@@ -12,7 +12,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from cmdaudit.models import RawCall
+from cmdaudit.models import CommandRecord, RawCall
 from cmdaudit.pipeline import build_records
 from cmdaudit.screen.build import collect_candidates, render_json, render_markdown
 from cmdaudit.screen.contract import (
@@ -253,3 +253,116 @@ def test_repeated_failures_kind_and_sample_are_deterministic(tmp_path: Path) -> 
     assert observed(forward) == first
     assert observed(reversed_path) == first
     assert first[0] == ("network", "snippet-a")
+
+
+def _preventable_record(
+    call_id: int, command: str, canonical: str, program: str, snippet: str
+) -> CommandRecord:
+    return CommandRecord(
+        session_id="s",
+        agent="codex",
+        project="p",
+        call_id=call_id,
+        slot=0,
+        started_at=f"2026-08-{call_id:02d}",
+        tool_name="exec_command",
+        command=command,
+        workdir=None,
+        input_kind="cmd",
+        duration_s=None,
+        duration_source="unknown",
+        duration_truncated=False,
+        exit_code=1,
+        status="failed",
+        status_source="exit_code",
+        failure_kind="other",
+        error_snippet=snippet,
+        program=program,
+        programs=(program,),
+        subcommand=None,
+        command_group="other",
+        parse_ok=True,
+        canonical=canonical,
+        template=canonical,
+        template_id="t1",
+        redacted=False,
+    )
+
+
+def test_preventable_errors_detects_each_kind(tmp_path: Path) -> None:
+    """三类判据各自能召回，且 kind 标注正确。"""
+    from cmdaudit.screen.rules import preventable_errors
+
+    rows = [
+        _preventable_record(
+            1, "sed -n '1,20p' src/[id]/route.ts", "sed -n '<n>,20p' <path>", "sed",
+            "zsh:1: no matches found: src/[id]/route.ts",
+        ),
+        _preventable_record(
+            2, "bun run x", "bun run x", "bun", "zsh: command not found: bun",
+        ),
+        _preventable_record(
+            3, "git status", "git status", "git",
+            "fatal: not a git repository (or any of the parent directories): .git",
+        ),
+    ]
+    db = tmp_path / "prev.duckdb"
+    write_commands(db, rows)
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        candidates = preventable_errors(conn, 10)
+    finally:
+        conn.close()
+
+    kinds = {str(item.observed["preventable_kind"]) for item in candidates}
+    assert kinds == {"zsh_glob_unquoted", "command_not_found", "not_a_git_repo"}
+    # 契约仍然守住：这条规则输出的也是待验证假设。
+    for item in candidates:
+        assert item.evidence_class == "exploratory"
+        assert item.status == "unverified"
+        assert item.verification.method == "manual_inspection"
+
+
+def test_preventable_errors_reports_kind_total_when_truncated(tmp_path: Path) -> None:
+    """`limit` 截掉长尾时，全库总数必须仍然可见（不做静默截断）。"""
+    from cmdaudit.screen.rules import preventable_errors
+
+    rows = [
+        _preventable_record(
+            i, f"bun run task{i}", f"bun run task{i}", "bun",
+            f"zsh: command not found: bun{i}",
+        )
+        for i in range(1, 6)
+    ]
+    db = tmp_path / "trunc.duckdb"
+    write_commands(db, rows)
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        candidates = preventable_errors(conn, 2)
+    finally:
+        conn.close()
+
+    assert len(candidates) == 2, "limit 应当生效"
+    for item in candidates:
+        assert item.observed["kind_total_occurrences"] == 5
+        assert item.observed["kind_total_shapes"] == 5
+        assert any("长尾未展开" in caveat for caveat in item.caveats)
+
+
+def test_preventable_errors_ignores_ordinary_failures(tmp_path: Path) -> None:
+    """跑起来但失败的命令不得被召回：判据只认执行前的拒绝。"""
+    from cmdaudit.screen.rules import preventable_errors
+
+    rows = [
+        _preventable_record(
+            i, "pytest", "pytest", "pytest", "2 failed, 3 passed in 4.2s"
+        )
+        for i in range(1, 8)
+    ]
+    db = tmp_path / "ordinary.duckdb"
+    write_commands(db, rows)
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        assert preventable_errors(conn, 10) == []
+    finally:
+        conn.close()

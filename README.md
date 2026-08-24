@@ -28,7 +28,7 @@ agentsview sessions.db ─┐
 主输入是 agentsview 的 `~/.agentsview/sessions.db`，白嫖它 20+ agent 的解析器。
 它没落库的 `duration_ms` / `exit_code`，从 `result_content` 里补解析
 （Codex 自报 `Wall time: X seconds` 和 `Process exited with code N`，
-本机实测 44915 / 26706 条命中）。
+本机实测 37180 / 27499 条命中）。
 
 ## 复用清单
 
@@ -63,7 +63,7 @@ cmdaudit screen               # 筛出待验证候选（假设，非结论）
 cmdaudit viz                  # 生成 report.html（离线单文件，可下钻到命令原文）
 ```
 
-本机实测：58898 条 Bash tool_call → 53341 条命令，耗时 90 秒。
+本机实测（2026-08-25 快照）：66253 条 Bash tool_call → 60499 条命令，耗时 243 秒。
 表结构与每列的取值来源见 [`docs/schema.md`](docs/schema.md)。
 
 读数前先看 `duration_source` 列：`self_reported` 是进程自报的精确墙钟，
@@ -84,7 +84,7 @@ duckdb out/commands.duckdb -c "
 耗时与失败是两套证据，覆盖范围不同，**不要跨表相加**。
 
 原因是本机数据里 `self_reported`（进程自报墙钟）100% 来自 codex，
-非 codex 的 14345 条命令只有 7 条有自报耗时。所以：
+非 codex 的 19063 条命令只有 21 条有自报耗时。所以：
 
 - **失败分析**不依赖耗时，覆盖全部 9 个 agent，是主线。
 - **耗时分析**只在自报墙钟上成立，结论不可外推到其他 agent。
@@ -115,39 +115,44 @@ M1（抽取与归一化）、M2（聚合与报告）、M3（候选筛选）、M5
 
 | 项 | 值 |
 |---|---|
-| 源库 Bash tool_call | 58898 |
-| 排除（`write_stdin` / `apply_patch` 等非命令） | 3766 |
-| 排除（`input_json` 无命令键） | 4935 |
-| 落库命令 | 53341 |
-| tree-sitter 解析降级 | 190（0.36%） |
-| 全量抽取耗时 | 92 秒 |
+| 源库 Bash tool_call | 66253 |
+| 排除（`write_stdin` / `apply_patch` 等非命令） | 3924 |
+| 排除（`input_json` 无命令键） | 5215 |
+| 落库命令 | 60499 |
+| tree-sitter 解析降级 | 266（0.44%） |
+| 全量抽取耗时 | 243 秒 |
 
-耗时证据分级：`self_reported` 65.7%、`turn_delta` 27.4%、
-`batch_shared` 6.4%、`unknown` 0.4%。
+耗时证据分级：`self_reported` 61.5%、`turn_delta` 31.9%、
+`batch_shared` 6.2%、`unknown` 0.5%。
 
 ### M2 实测结果
 
 | 项 | 值 |
 |---|---|
-| 可用于耗时统计 | 46959 |
-| 判定为失败 | 2007 |
-| 查无结果（非失败） | 254 |
-| 耗时被工具让出截断 | 3016 |
+| 可用于耗时统计 | 49425 |
+| 判定为失败 | 2246 |
+| 查无结果（非失败） | 152 |
+| 耗时被工具让出截断 | 7213 |
 | 报告表数量 | 8 |
 
 M2 期间修掉两个 M1 的语义缺陷：
 
-- **工具让出截断**。612 条自报耗时聚集在 30.0-30.5 秒，那是 `yield_time_ms`
-  的让出上限而非命令耗时，其中 473 条没有退出码。新增 `duration_truncated`
+- **工具让出截断**。728 条自报耗时聚集在 30.0-30.5 秒，那是 `yield_time_ms`
+  的让出上限而非命令耗时，其中 723 条没有退出码。新增 `duration_truncated`
   标记并排除出耗时统计。
 - **`no_match` 不是失败**。`rg` 退出码 1 是查无结果，`which` 的 1 是未安装。
   `find` 不在此列：无匹配返回 0，退出码 1 是遍历/权限错误，是真失败。
-  修正前 `rg` 以 133 次失败排在前列，实际只有 38 次真失败。
+  修正前 `rg` 以 140 次失败排在前列，实际只有 39 次真失败。
 
 ### M3 实测结果
 
-四条确定性规则产出 42 条候选：`wait_polling` 13、`duration_hotspots` 12、
-`repeated_failures` 10、`timeout_and_network_clusters` 7。
+五条确定性规则产出 86 条候选：`preventable_errors` 42、`wait_polling` 13、
+`duration_hotspots` 12、`repeated_failures` 12、`timeout_and_network_clusters` 7。
+
+`preventable_errors` 与其他四条规则性质不同：它只收「命令根本没跑起来」的失败，
+判据是三类客观事实 —— zsh glob 未加引号（113 次）、命令不存在（71 次）、
+不在 git 仓库内执行 git（39 次）。这类结论不需要反事实实验，
+因为加引号或先判仓库没有 trade-off，验证方法是 `rule_replay` 而非 `counterfactual_run`。
 
 契约在**构造时**强制，不是事后检查：`evidence_class` 非 `exploratory`、
 `status` 非 `unverified`、判决式措辞（「不必要」「应删除」「redundant」）、
