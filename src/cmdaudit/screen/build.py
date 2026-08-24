@@ -87,6 +87,41 @@ def render_json(candidates: list[Candidate], *, generated_at: dt.datetime | None
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
+def _render_remedy_digest(candidates: list[Candidate]) -> list[str]:
+    """带 remedy 的候选单独成章，不受 top 截断。
+
+    remedy 是唯一不依赖反事实实验就能落地的产出：命令有没有进入执行阶段
+    是客观事实。按 priority 混排会把它埋在截断线之外，所以在这里全量列出。
+    """
+    withremedy = [c for c in candidates if c.observed.get("remedy")]
+    if not withremedy:
+        return []
+    grouped: dict[str, list[Candidate]] = {}
+    for candidate in withremedy:
+        grouped.setdefault(str(candidate.observed["remedy"]), []).append(candidate)
+    ranked = sorted(
+        grouped.items(),
+        key=lambda item: sum(int(c.observed.get("occurrences") or 0) for c in item[1]),
+        reverse=True,
+    )
+    lines = [
+        "## 可直接落地的 AGENTS.md 候选条目",
+        "",
+        f"{len(withremedy)} 条候选归并为 {len(ranked)} 条建议。"
+        "这些命令未进入执行阶段，判定不需要 oracle，但粘贴前仍需读样本确认覆盖面。",
+        "",
+    ]
+    for remedy, group in ranked:
+        hits = sum(int(c.observed.get("occurrences") or 0) for c in group)
+        lines.append(f"- {remedy}。")
+        lines.append(
+            f"  依据：{len(group)} 种命令形状共命中 {hits} 次，"
+            f"例如 `{group[0].command_shape}`（`{group[0].candidate_id}`）。"
+        )
+    lines.append("")
+    return lines
+
+
 def render_markdown(
     candidates: list[Candidate], *, generated_at: dt.datetime | None = None, top: int = 20
 ) -> str:
@@ -111,6 +146,7 @@ def render_markdown(
         "优先级是规则化的粗排，不是收益预估。",
         "",
     ]
+    lines.extend(_render_remedy_digest(candidates))
     for index, candidate in enumerate(candidates[:top], start=1):
         lines.append(f"## {index}. `{candidate.command_shape}`")
         lines.append("")
@@ -136,6 +172,19 @@ def render_markdown(
         lines.append("")
         lines.append(f"独立判定：`{candidate.verification.oracle}`")
         lines.append("")
+        remedy = candidate.observed.get("remedy")
+        if remedy:
+            # 只有 preventable 线带 remedy：它的补救不需要反事实实验，
+            # 所以可以直接给出待粘贴的条目原文。仍是候选，粘贴前需读样本确认。
+            lines.append("**待粘贴的 AGENTS.md 条目**（确认样本后再写入）：")
+            lines.append("")
+            lines.append("```markdown")
+            lines.append(f"- {remedy}。")
+            lines.append(f"  依据：`{candidate.command_shape}` 命中 "
+                         f"{candidate.observed.get('occurrences')} 次，"
+                         f"未进入执行阶段。")
+            lines.append("```")
+            lines.append("")
         if candidate.caveats:
             lines.append("**这条候选的边界**：")
             lines.append("")

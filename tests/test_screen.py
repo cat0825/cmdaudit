@@ -366,3 +366,66 @@ def test_preventable_errors_ignores_ordinary_failures(tmp_path: Path) -> None:
         assert preventable_errors(conn, 10) == []
     finally:
         conn.close()
+
+
+def test_preventable_errors_renders_pasteable_agents_entry(tmp_path: Path) -> None:
+    """preventable 候选要给出可直接粘贴的 AGENTS.md 条目，而不是把补救埋在散文里。"""
+    from cmdaudit.screen.rules import preventable_errors
+
+    rows = [
+        _preventable_record(
+            i, "bun run build", "bun run build", "bun",
+            "zsh: command not found: bun",
+        )
+        for i in range(1, 8)
+    ]
+    db = tmp_path / "paste.duckdb"
+    write_commands(db, rows)
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        candidates = preventable_errors(conn, 10)
+    finally:
+        conn.close()
+
+    assert candidates, "应召回 command_not_found 形状"
+    assert candidates[0].observed["remedy"], "remedy 必须是独立字段"
+
+    markdown = render_markdown(candidates)
+    assert "待粘贴的 AGENTS.md 条目" in markdown
+    assert "```markdown" in markdown
+    assert candidates[0].observed["remedy"] in markdown
+
+
+def test_remedy_digest_survives_top_truncation(tmp_path: Path) -> None:
+    """remedy 汇总不受 top 截断：它是唯一不需要 oracle 就能落地的产出。"""
+    from cmdaudit.screen.rules import preventable_errors
+
+    rows = [
+        _preventable_record(
+            idx,
+            f"bun-{shape} run build",
+            f"bun-{shape} run build",
+            f"bun-{shape}",
+            f"zsh: command not found: bun-{shape}",
+        )
+        for shape in range(1, 6)
+        for idx in range(shape * 100, shape * 100 + 5)
+    ]
+    db = tmp_path / "digest.duckdb"
+    write_commands(db, rows)
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        candidates = preventable_errors(conn, 10)
+    finally:
+        conn.close()
+
+    assert len(candidates) >= 3, "需要多条候选才能验证截断行为"
+    markdown = render_markdown(candidates, top=1)
+
+    # 汇总按 remedy 归并，所以断言的是「每种建议都没被截断吃掉」，
+    # 而不是每个 candidate_id 都出现。
+    remedies = {str(c.observed["remedy"]) for c in candidates}
+    for remedy in remedies:
+        assert remedy in markdown
+    assert f"归并为 {len(remedies)} 条建议" in markdown
+    assert any(c.candidate_id in markdown for c in candidates), "每种建议要留一个可追溯 id"
