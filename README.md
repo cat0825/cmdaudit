@@ -154,6 +154,11 @@ M2 期间修掉两个 M1 的语义缺陷：
 不在 git 仓库内执行 git（39 次）。这类结论不需要反事实实验，
 因为加引号或先判仓库没有 trade-off，验证方法是 `rule_replay` 而非 `counterfactual_run`。
 
+正因为不需要反事实实验，这类候选的 `remedy` 在 `candidates.md` 里有独立汇总章节，
+不受候选清单 `top` 截断影响 —— 否则它的 priority 量纲偏低，42 条里只有 1 条能进前 20。
+汇总按 remedy 文本归并：42 条候选实际只有 3 种建议，各保留一个代表 `candidate_id`
+供追溯，按总命中次数排序。粘贴进 AGENTS.md 前仍需读样本确认覆盖面。
+
 契约在**构造时**强制，不是事后检查：`evidence_class` 非 `exploratory`、
 `status` 非 `unverified`、判决式措辞（「不必要」「应删除」「redundant」）、
 假设缺少限定词、观测依据为空，五类越界都会抛 `ContractViolation`。

@@ -316,7 +316,7 @@ def _rebind_bucket(
         key=table.key,
         title=table.title,
         scope=table.scope,
-        columns=(real_column,) + table.columns[1:],
+        columns=(real_column, *table.columns[1:]),
         rows=table.rows,
         sql=table.sql,
         note=table.note,

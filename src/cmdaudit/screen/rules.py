@@ -366,6 +366,7 @@ LIMIT {limit}
                         "kind_total_occurrences": kind_total,
                         "kind_total_shapes": kind_shapes,
                         "mechanism": mechanism,
+                        "remedy": remedy,
                         "error_sample": (str(sample)[:200] if sample else None),
                     },
                     hypothesis=(
