@@ -36,6 +36,16 @@ export function formatDay(value: string | null | undefined): string {
   return new Date(stamp).toISOString().slice(0, 10);
 }
 
+/**
+ * 「MM-DD」短日。
+ * 不能直接对 `formatDay()` 的结果 `.slice(5)`：无值时它返回 "—"，切片后是空串，
+ * 页面上会出现一个只有箭头的 " → "。
+ */
+export function formatMonthDay(value: string | null | undefined): string {
+  const day = formatDay(value);
+  return day.length >= 10 ? day.slice(5) : day;
+}
+
 export function formatDayShort(day: string): string {
   const parts = day.split("-");
   if (parts.length < 3) return day;

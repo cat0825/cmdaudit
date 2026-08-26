@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cmdaudit 前端审查 · 2026-08-26</title>
+<style>
+  :root {
+    --bg: #f8f9fb;
+    --elevated: #ffffff;
+    --inset: #f1f3f6;
+    --border: #e2e5ea;
+    --border-strong: #d0d4db;
+    --text: #1b2330;
+    --muted: #5a6572;
+    --faint: #8a94a1;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1fe;
+    --danger: #d9483b;
+    --warn: #b98a1d;
+    --ok: #2e9e6b;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  /* header */
+  .kicker { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 4px; }
+  .sub { color: var(--muted); font-size: 13.5px; }
+  .sub code, .fpath { font-family: var(--mono); font-size: 12px; background: var(--inset); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; font-size: 12.5px; color: var(--faint); }
+  .meta-row b { color: var(--muted); font-weight: 600; }
+
+  /* verdict */
+  .verdict {
+    margin-top: 28px; background: var(--elevated); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 12px; padding: 18px 20px;
+    font-size: 14.5px;
+  }
+  .verdict b { color: var(--accent); }
+
+  /* KPI */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 24px; }
+  .kpi { background: var(--elevated); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .kpi .n { font-family: var(--mono); font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  .kpi .l { font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+  .kpi .n.danger { color: var(--danger); } .kpi .n.warn { color: var(--warn); }
+  .kpi .n.ok { color: var(--ok); } .kpi .n.accent { color: var(--accent); }
+
+  /* section */
+  section { margin-top: 44px; }
+  h2 { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 10px; }
+  h2 .cnt { font-family: var(--mono); font-size: 12px; color: var(--faint); font-weight: 400; }
+  .sec-note { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  /* severity bar */
+  .sevbar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; margin-top: 16px; border: 1px solid var(--border); }
+  .sevbar div { display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: #fff; }
+  .sevbar .p1 { background: var(--danger); } .sevbar .p2 { background: var(--warn); } .sevbar .p3 { background: var(--faint); }
+  .sevlegend { display: flex; gap: 18px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 5px; vertical-align: 1px; }
+
+  /* finding cards */
+  .finding { background: var(--elevated); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-top: 10px; }
+  .finding:hover { border-color: var(--border-strong); }
+  .fhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .fid { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+  .sev { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px; letter-spacing: .05em; }
+  .sev.p1 { background: #fbeae8; color: var(--danger); }
+  .sev.p2 { background: #f7f0dd; color: var(--warn); }
+  .sev.p3 { background: var(--inset); color: var(--muted); }
+  .sev.a  { background: var(--accent-soft); color: var(--accent); }
+  .ftitle { font-weight: 600; font-size: 14px; }
+  .fwhere { font-family: var(--mono); font-size: 11.5px; color: var(--accent); margin-top: 6px; word-break: break-all; }
+  .fbody { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .ffix { margin-top: 8px; font-size: 12.5px; color: var(--text); background: var(--inset); border-radius: 8px; padding: 7px 11px; }
+  .ffix::before { content: "修复 → "; font-weight: 600; color: var(--ok); }
+  .fissue { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-left: auto; }
+
+  /* pass list */
+  .pass { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; margin-top: 14px; }
+  .pass .item { background: var(--elevated); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; font-size: 13px; }
+  .pass .item::before { content: "✓"; color: var(--ok); font-weight: 700; margin-right: 8px; }
+  .pass .item span { color: var(--muted); }
+
+  /* A-01 demo */
+  .demo { background: var(--elevated); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-top: 14px; }
+  .bars { margin-top: 12px; }
+  .bar-row { display: grid; grid-template-columns: 210px 1fr 90px; align-items: center; gap: 12px; margin-top: 8px; font-size: 12.5px; }
+  .bar-row .bl { color: var(--muted); }
+  .bar-track { background: var(--inset); border-radius: 6px; height: 20px; position: relative; }
+  .bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 6px; }
+  .bar-fill.bad { background: var(--danger); } .bar-fill.good { background: var(--ok); }
+  .bar-val { font-family: var(--mono); font-size: 12.5px; font-weight: 600; text-align: right; }
+  .demo .chain { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--inset); border-radius: 8px; padding: 8px 12px; margin-top: 14px; overflow-x: auto; white-space: nowrap; }
+  .demo .chain b { color: var(--danger); }
+
+  /* roadmap */
+  .road { counter-reset: step; margin-top: 14px; }
+  .step { display: grid; grid-template-columns: 34px 1fr; gap: 14px; margin-top: 14px; }
+  .step::before {
+    counter-increment: step; content: counter(step);
+    width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: #fff;
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  }
+  .step .st { background: var(--elevated); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+  .step .st b { font-size: 13.5px; }
+  .step .st p { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+
+  /* footer */
+  footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--faint); font-size: 12px; }
+  footer code { font-family: var(--mono); font-size: 11px; }
+
+  /* filter */
+  .filters { display: flex; gap: 6px; margin-top: 14px; }
+  .filters button {
+    font-family: var(--mono); font-size: 11.5px; padding: 4px 12px; border-radius: 99px;
+    border: 1px solid var(--border); background: var(--elevated); color: var(--muted); cursor: pointer;
+  }
+  .filters button.on { background: var(--text); color: #fff; border-color: var(--text); }
+  .finding.hide { display: none; }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 28px 16px 64px; }
+    h1 { font-size: 23px; }
+    .bar-row { grid-template-columns: 130px 1fr 72px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Frontend Audit · cmdaudit</div>
+  <h1>前端审查报告：逻辑 × 审美</h1>
+  <div class="sub">范围 <span class="fpath">web/src</span>（React 19，~2,400 行）对照 <span class="fpath">src/cmdaudit/viz/*.py</span> 数据契约 · 2026-08-26 · main @ <span class="fpath">fef4e12</span></div>
+  <div class="meta-row">
+    <span><b>方法</b> 全量通读 + 当前 main 复跑（61,772 命令 / 222.7s）+ 真实浏览器实测</span>
+    <span><b>环境</b> Chromium · 1440×900 / 720×900 · 亮/暗双主题 · 六视图全覆盖</span>
+    <span><b>佐证</b> open issue #21 #23 #44 #45 #49 #50</span>
+  </div>
+
+  <div class="verdict">
+    无无条件白屏路径，设计 token 纪律高于平均水平。系统性短板两个：<b>payload 信任边界画错了位置</b>（把"同源 Python 生成"当免验证理由，与 issue #23 自相矛盾）、<b>键盘作用域没有统一仲裁</b>（三个组件各自挂 window 监听，缝隙从层间漏出）。审美侧有一个已实测定位的窄视口溢出 bug，一行可修。
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n danger">4</div><div class="l">P1 错误行为（逻辑）</div></div>
+    <div class="kpi"><div class="n warn">6</div><div class="l">P2 体验/局部错误</div></div>
+    <div class="kpi"><div class="n">5</div><div class="l">P3 建议/加固</div></div>
+    <div class="kpi"><div class="n ok">0</div><div class="l">对比度违规（AA，双主题）</div></div>
+    <div class="kpi"><div class="n accent">1 行</div><div class="l">修复窄视口溢出所需改动</div></div>
+  </div>
+
+  <section>
+    <h2>严重度分布 <span class="cnt">逻辑 15 项</span></h2>
+    <div class="sevbar">
+      <div class="p1" style="width:26.6%">P1 × 4</div>
+      <div class="p2" style="width:40%">P2 × 6</div>
+      <div class="p3" style="width:33.4%">P3 × 5</div>
+    </div>
+    <div class="sevlegend">
+      <span><i class="dot" style="background:var(--danger)"></i>P1 错误行为</span>
+      <span><i class="dot" style="background:var(--warn)"></i>P2 体验/局部错误</span>
+      <span><i class="dot" style="background:var(--faint)"></i>P3 建议/加固</span>
+    </div>
+    <div class="filters" id="filters">
+      <button data-f="all" class="on">全部</button>
+      <button data-f="p1">仅 P1</button>
+      <button data-f="p2">仅 P2</button>
+      <button data-f="p3">仅 P3</button>
+    </div>
+
+    <div id="findings">
+
+      <div class="finding" data-sev="p1">
+        <div class="fhead"><span class="fid">F-01</span><span class="sev p1">P1</span><span class="ftitle">payload 浅合并 + 零运行时校验，深层缺字段直接白屏</span><span class="fissue">issue #23</span></div>
+        <div class="fwhere">web/src/lib/load.ts:25-26,32-33 → charts/Heatmap.tsx:38 · App.tsx:116</div>
+        <div class="fbody"><code>{...EMPTY_PAYLOAD, ...parsed}</code> 是浅合并：payload 顶层有 <code>dashboard</code> 但缺 <code>heatmap_agents</code>（旧 Python + 新外壳、手改 report.html）时该字段为 undefined，<code>.map</code> 抛 TypeError 整页白屏；<code>findings</code> 非数组同理。</div>
+        <div class="ffix">递归 deep-merge EMPTY_PAYLOAD，或 load 出口做轻量 shape 校验，失败降级 EMPTY 并显式告警，而不是把 undefined 漏进渲染层。</div>
+      </div>
+
+      <div class="finding" data-sev="p1">
+        <div class="fhead"><span class="fid">F-02</span><span class="sev p1">P1</span><span class="ftitle">前端硬编码合规声明，三层共谋</span><span class="fissue">issue #23</span></div>
+        <div class="fwhere">web/src/views/CandidatesView.tsx:16-18 · lib/payload.ts:49-58 · viz/model.py:84-95 · viz/collect.py:356-378</div>
+        <div class="fbody"><code>evidence_class = exploratory</code> 徽标是写死的字符串；TS 类型、Python dataclass、加载器三层都没有这个字段。损坏/伪造的 candidates.json 会被页面显示为合规 exploratory——直接戳破工具的证据分级底线。</div>
+        <div class="ffix">schema 版本化 + viz 加载时验证 + 徽标改从已验证字段渲染。</div>
+      </div>
+
+      <div class="finding" data-sev="p1">
+        <div class="fhead"><span class="fid">F-03</span><span class="sev p1">P1</span><span class="ftitle">关闭抽屉后 selectedId 残留，1–4 可改写不可见项</span></div>
+        <div class="fwhere">web/src/App.tsx:51-53, 81, 105, 211</div>
+        <div class="fbody">Board 点开卡片 → <code>openFinding</code> 同时 setSelectedId → 关抽屉只清 openId → <code>activeId = openId ?? selectedId</code> 仍指向那条 finding → 按 1–4 改写一条屏幕上没有任何选中指示的记录。:48-50 注释声称已防住，实际只防了切视图。</div>
+        <div class="ffix">关抽屉时若非 queue 视图一并清 selectedId；或 openFinding 只在 queue 视图写 selectedId。</div>
+      </div>
+
+      <div class="finding" data-sev="p1">
+        <div class="fhead"><span class="fid">F-04</span><span class="sev p1">P1</span><span class="ftitle">CommandPalette 退出动画是死代码</span></div>
+        <div class="fwhere">web/src/components/CommandPalette.tsx:107, 116, 122, 134（正确写法见 DetailDrawer.tsx:32-33）</div>
+        <div class="fbody"><code>if (!open) return null</code> 在 return <code>AnimatePresence</code> 之前，open 变 false 瞬间整树卸载，exit variants 永不播放——声明了不存在的行为。</div>
+        <div class="ffix">条件渲染移进 AnimatePresence 内部（DetailDrawer 同款结构）。</div>
+      </div>
+
+      <div class="finding" data-sev="p2">
+        <div class="fhead"><span class="fid">F-05</span><span class="sev p2">P2</span><span class="ftitle">复制按钮在 file:// 下静默失败，fallback 不可达</span></div>
+        <div class="fwhere">web/src/components/CommandBlock.tsx:25-28</div>
+        <div class="fbody"><code>clipboard.writeText</code> 在 file:// 非安全上下文 reject，<code>.catch(() =&gt; undefined)</code> 吞掉后不进 execCommand 回退，也无失败反馈。<b>主分发形态就是 file:// 离线 HTML——主路径上复制是坏的。</b></div>
+        <div class="ffix">catch 里降级 execCommand 分支，再失败给视觉提示。</div>
+      </div>
+
+      <div class="finding" data-sev="p2">
+        <div class="fhead"><span class="fid">F-06</span><span class="sev p2">P2</span><span class="ftitle">抽屉提示 J/K「上下条」，但 j/k 只动选择不动抽屉内容</span></div>
+        <div class="fwhere">web/src/components/DetailDrawer.tsx:198-202 vs views/QueueView.tsx:154-162 · App.tsx:127</div>
+        <div class="fbody">j/k 只改 selectedId，抽屉渲染的是 openId，内容原地不动。提示与行为不符。</div>
+        <div class="ffix">抽屉打开时 j/k 改为「选中并打开下一条」（selectedId + openId 联动）。</div>
+      </div>
+
+      <div class="finding" data-sev="p2">
+        <div class="fhead"><span class="fid">F-07</span><span class="sev p2">P2</span><span class="ftitle">批量勾选被筛选条件静默裁剪</span></div>
+        <div class="fwhere">web/src/views/QueueView.tsx:187, 278</div>
+        <div class="fbody">勾选 5 条后加筛选隐藏 3 条，批量条显示「已选 2 条」且只对 2 条生效，用户无从得知另外 3 条没落。</div>
+        <div class="ffix">显示「已选 5（当前可见 2）」并对全部生效，或筛选变化时清空勾选集。</div>
+      </div>
+
+      <div class="finding" data-sev="p2">
+        <div class="fhead"><span class="fid">F-08</span><span class="sev p2">P2</span><span class="ftitle">抽屉「首次/末次」在 null 时渲染成 " → "</span></div>
+        <div class="fwhere">web/src/components/DetailDrawer.tsx:92 · viz/collect.py:584-585</div>
+        <div class="fbody"><code>formatDay(null)</code> 返回 "—"，再 <code>.slice(5)</code> 得空串，两格变 <code>" → "</code>。started_at 不可解析时 first_seen/last_seen 确实可为 null。</div>
+        <div class="ffix">任一为 "—" 时整体退化显示 formatDay 原值。</div>
+      </div>
+
+      <div class="finding" data-sev="p2">
+        <div class="fhead"><span class="fid">F-09</span><span class="sev p2">P2</span><span class="ftitle">remedy 无专属呈现，observed 嵌套对象渲染 [object Object]</span><span class="fissue">issue #49</span></div>
+        <div class="fwhere">web/src/views/CandidatesView.tsx:70-81 · viz/collect.py:375</div>
+        <div class="fbody">remedy 是全工具唯一不需要反事实实验就能直接用的产出，数据已通（observed 透传）但视图没有，与诊断字段挤在无差别键值格子里；嵌套对象 <code>String(value)</code> 输出 [object Object]。</div>
+        <div class="ffix">按 #49 加归并后的 remedy 区块（归并函数抽共享）；observed 对 object 做 JSON.stringify 兜底。</div>
+      </div>
+
+      <div class="finding" data-sev="p2">
+        <div class="fhead"><span class="fid">F-10</span><span class="sev p2">P2</span><span class="ftitle">面板打开时队列 j/k/方向键仍在后台生效</span></div>
+        <div class="fwhere">web/src/views/QueueView.tsx:149-151, 163</div>
+        <div class="fbody">守卫只看 tagName，不感知 palette/drawer 打开状态；焦点在遮罩后时按 j 移动选中行，Enter 还可能开抽屉。</div>
+        <div class="ffix">键盘监听收敛到 App 单点仲裁，palette/drawer 打开时队列短路。</div>
+      </div>
+
+      <div class="finding" data-sev="p3">
+        <div class="fhead"><span class="fid">F-11</span><span class="sev p3">P3</span><span class="ftitle">triage 三宗罪全部命中</span><span class="fissue">issue #21</span></div>
+        <div class="fwhere">web/src/lib/triage.ts:34, 61-64, 70-72, 17 · DetailDrawer.tsx:110-112</div>
+        <div class="fbody">storage key 只取 basename（所有 commands.duckdb 串用）；读写失败静默吞掉且 UI 无「未保存」指示；无导出导入；<code>verified = "已确认"</code> 与 screen 契约禁止的 verified 语义撞名。</div>
+        <div class="ffix">稳定指纹 hash + 写入失败显式提示 + JSON 导出导入 + 改名「已复核」。</div>
+      </div>
+
+      <div class="finding" data-sev="p3">
+        <div class="fhead"><span class="fid">F-12</span><span class="sev p3">P3</span><span class="ftitle">#44/#45/#50 前端侧佐证</span><span class="fissue">issue #44 #45 #50</span></div>
+        <div class="fwhere">viz/collect.py:575 · web/src/lib/load.ts · App.tsx</div>
+        <div class="fbody">#44：finding_id 挂在 Drain3 聚类上，模板漂移时 triage 条目静默孤儿化。#45：单文件架构 + 首帧全量注入 + 无 React.lazy，tracks ~690KB 无法按需，修复面在 Python/打包层。#50：纯 Python bug，前端无次生崩溃。</div>
+      </div>
+
+      <div class="finding" data-sev="p3">
+        <div class="fhead"><span class="fid">F-13</span><span class="sev p3">P3</span><span class="ftitle">魔法字符串键：中文 coverage 键硬编码两侧</span></div>
+        <div class="fwhere">web/src/App.tsx:126 · views/OverviewView.tsx:51-52,61,66,80-81 · report/build.py:22-37</div>
+        <div class="fbody">Python 侧改键名，前端 numberOf 把非 number 归为 0——静默归零，无任何报错。</div>
+        <div class="ffix">coverage 改固定英文键 + 显示标签分离，或 TS 导出常量两侧共用。</div>
+      </div>
+
+      <div class="finding" data-sev="p3">
+        <div class="fhead"><span class="fid">F-14</span><span class="sev p3">P3</span><span class="ftitle">coverage 对象值会让 React 19 直接 throw</span></div>
+        <div class="fwhere">web/src/views/TrackView.tsx:222</div>
+        <div class="fbody">当前 Python 只产标量所以不炸；某天塞 dict/list 即白屏。与 F-01 同属「契约靠默契」。</div>
+        <div class="ffix">渲染前 String() 兜底。</div>
+      </div>
+
+      <div class="finding" data-sev="p3">
+        <div class="fhead"><span class="fid">F-15</span><span class="sev p3">P3</span><span class="ftitle">小项合集</span></div>
+        <div class="fwhere">App.tsx:79-86 · TrackView.tsx:17-21 · lib/theme.ts:61-63</div>
+        <div class="fbody">openFinding 对不存在的 id 仍 setSelectedId；Row.cells 混入 bool 渲染为空格；theme.cycle() 是死代码。大列表无虚拟化<b>不是问题</b>（MAX_FINDINGS=120 等硬上限），此条为后续 reviewer 省时间。</div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>审美实测 <span class="cnt">计算样式级 · 双主题 · 双宽度</span></h2>
+    <div class="sec-note">达标项实测通过，不要改；问题项给出现象、根因与修法。</div>
+    <div class="pass">
+      <div class="item">对比度 <span>六视图 × 亮/暗全量文本采样，WCAG AA 违规 = 0（含 9.5px 最小字）</span></div>
+      <div class="item">字体纪律 <span>全站仅 Geist + Geist Mono，base64 内联，file:// 可用；数字统一 tabular-nums</span></div>
+      <div class="item">色彩纪律 <span>单 accent（electric blue，oklch 5 档），语义色只表状态，无渐变滥用</span></div>
+      <div class="item">主题 <span>system / light / dark 三态 + localStorage 覆盖，实现正确</span></div>
+      <div class="item">可及性 <span>focus-visible 焦点环、prefers-reduced-motion 全局降级、键盘可达看板</span></div>
+      <div class="item">横向溢出 <span>1440px 下六视图全部无溢出</span></div>
+    </div>
+
+    <div class="demo">
+      <div class="fhead"><span class="fid">A-01</span><span class="sev p1">P1</span><span class="ftitle">窄视口（&lt;1024px）看板/耗时视图横向溢出</span><span class="fissue">一行可修</span></div>
+      <div class="fbody" style="margin-top:8px">
+        <b>现象</b>：720px 视口实测整页 scrollWidth = 8651px。<b>根因</b>：BoardView 的 grid item（section）保留默认
+        <code>min-width: auto</code>，列内最长 finding.template 达 1243 字符，nowrap 的 <code>&lt;code class="clip"&gt;</code>
+        把 min-content 一路上传撑爆轨道。同仓库 QueueView 用 <code>minmax(0,1fr)</code> 是对的——疏漏，不是知识缺口。
+      </div>
+      <div class="bars">
+        <div class="bar-row">
+          <span class="bl">修复前 · 720px 视口</span>
+          <div class="bar-track"><div class="bar-fill bad" style="width:100%"></div></div>
+          <span class="bar-val" style="color:var(--danger)">8651 px</span>
+        </div>
+        <div class="bar-row">
+          <span class="bl">加 min-w-0 后（实测）</span>
+          <div class="bar-track"><div class="bar-fill good" style="width:8.2%"></div></div>
+          <span class="bar-val" style="color:var(--ok)">710 px</span>
+        </div>
+      </div>
+      <div class="chain">溢出链：grid(662) → SECTION <b>min-width:auto · w 8628</b> → UL(minW auto) → LI → card DIV → CODE.clip(1243 字符 nowrap) ← min-content 一路上传</div>
+      <div class="ffix">BoardView.tsx:54 的 section 加 <code>min-w-0</code>（一行）；TrackView.tsx:48 表格单元同样检查（table-fixed 或包一层 min-w-0）。</div>
+    </div>
+
+    <div class="finding" data-sev="p2" style="margin-top:10px">
+      <div class="fhead"><span class="fid">A-02</span><span class="sev p2">P2</span><span class="ftitle">类型刻度碎片</span></div>
+      <div class="fbody">实测 12 个字号（9.5–24，半档步进一致但偏多）；9.5px 已低于舒适阅读线（Board 卡片次级信息 BoardView.tsx:112）。数据密集内部工具可接受。</div>
+      <div class="ffix">收敛到 ≤ 8 档；9.5px 只留给 truly-tertiary 内容。</div>
+    </div>
+
+    <div class="finding" data-sev="p2">
+      <div class="fhead"><span class="fid">A-03</span><span class="sev p2">P2</span><span class="ftitle">file:// 复制无反馈环（= F-05 的体验面）</span></div>
+      <div class="fbody">主分发形态上的核心交互点了没反应。修复 F-05 时一并加 copied 视觉确认态。</div>
+    </div>
+
+    <div class="finding" data-sev="p3">
+      <div class="fhead"><span class="fid">A-04</span><span class="sev p3">P3</span><span class="ftitle">圆角 token 基本一致但无强制</span></div>
+      <div class="fbody">rounded-card(12) / rounded-lg(8) / pill 为主，混零散 4px/3px。可接受；新组件沿用现有两档即可。</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>修复优先级 <span class="cnt">建议顺序</span></h2>
+    <div class="road">
+      <div class="step"><div class="st"><b>F-01 + F-02 一起修：load 层 shape 校验 + candidates 契约验证</b><p>修完 issue #23 前端侧闭环，P2/P3 里一半问题失去土壤。</p></div></div>
+      <div class="step"><div class="st"><b>A-01：一行 min-w-0</b><p>收益是窄窗口下两个视图从「坏」变「好」，改动成本极低。</p></div></div>
+      <div class="step"><div class="st"><b>F-03 + F-06 + F-10：键盘仲裁收敛到 App 单点</b><p>三个组件各自发明守卫是缝隙来源，单点仲裁一次消掉一类 bug。</p></div></div>
+      <div class="step"><div class="st"><b>F-05：file:// 复制回退 + copied 反馈</b><p>主分发形态的核心交互，不能是坏的总沉默。</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>未验证项 <span class="cnt">审查边界</span></h2>
+    <div class="pass" style="grid-template-columns:1fr">
+      <div class="item" style="border-left:3px solid var(--faint)">未跑 <code>npm run dev</code> 热更新路径（只验证了构建产物）；motion 动画帧率未量化；Safari / Firefox 未测（oklch 与 singlefile 在旧浏览器的表现）。像素级视觉审查未做——本次为计算样式级审查。</div>
+    </div>
+  </section>
+
+  <footer>
+    数据源：<code>docs/reviews/2026-08-26-frontend-audit.md</code> · 全量复跑产物 <code>out/report.html</code>（1,939 KB，61,772 命令）· 门禁 <code>./scripts/check.sh</code> 全绿 · 生成于 2026-08-26
+  </footer>
+
+</div>
+<script>
+  document.getElementById('filters').addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var f = btn.dataset.f;
+    this.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b === btn); });
+    document.querySelectorAll('#findings .finding').forEach(function (el) {
+      el.classList.toggle('hide', f !== 'all' && el.dataset.sev !== f);
+    });
+  });
+</script>
+</body>
+</html>

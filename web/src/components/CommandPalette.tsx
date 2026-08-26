@@ -104,114 +104,118 @@ export function CommandPalette({
     listRef.current?.children[cursor]?.scrollIntoView({ block: "nearest" });
   }, [cursor]);
 
-  if (!open) return null;
-
   const commit = (action: Action | undefined) => {
     if (!action) return;
     action.run();
     onClose();
   };
 
+  // 条件渲染必须放在 AnimatePresence **内部**：早退 `if (!open) return null` 会让
+  // open 变 false 的瞬间整棵树卸载，下面的 exit variants 永远播不到。
+  // 参照 DetailDrawer 的写法。
   return (
     <AnimatePresence>
-      <motion.div
-        className="fixed inset-0 z-50 grid place-items-start justify-center pt-[12vh]"
-        style={{ background: "oklch(0.15 0.01 265 / 0.4)", backdropFilter: "blur(4px)" }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={EASE_FAST}
-        onClick={onClose}
-      >
+      {open ? (
         <motion.div
-          role="dialog"
-          aria-modal="true"
-          aria-label="命令面板"
-          className="w-[min(620px,calc(100vw-32px))] overflow-hidden rounded-xl border"
-          style={{ background: "var(--bg-elevated)", borderColor: "var(--border-strong)", boxShadow: "var(--shadow-pop)" }}
-          initial={{ opacity: 0, scale: 0.97, y: -8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.98, y: -4 }}
-          transition={SPRING_POP}
-          onClick={(event) => event.stopPropagation()}
+          key="palette-scrim"
+          className="fixed inset-0 z-50 grid place-items-start justify-center pt-[12vh]"
+          style={{ background: "oklch(0.15 0.01 265 / 0.4)", backdropFilter: "blur(4px)" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={EASE_FAST}
+          onClick={onClose}
         >
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown" || (event.key === "n" && event.ctrlKey)) {
-                event.preventDefault();
-                setCursor((current) => Math.min(results.length - 1, current + 1));
-              } else if (event.key === "ArrowUp" || (event.key === "p" && event.ctrlKey)) {
-                event.preventDefault();
-                setCursor((current) => Math.max(0, current - 1));
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                commit(results[cursor]);
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                onClose();
-              }
-            }}
-            placeholder="搜索命令模板、失败类型，或跳转视图…"
-            className="w-full border-b bg-transparent px-4 py-3.5 text-[13.5px] outline-none"
-            style={{ borderColor: "var(--border)", color: "var(--text)" }}
-          />
-          <ul ref={listRef} className="max-h-[52vh] overflow-y-auto p-1.5">
-            {results.length === 0 ? (
-              <li className="px-3 py-6 text-center text-[12px]" style={{ color: "var(--text-faint)" }}>
-                没有匹配项
-              </li>
-            ) : (
-              results.map((action, index) => (
-                <li key={action.id}>
-                  <button
-                    type="button"
-                    onClick={() => commit(action)}
-                    onMouseEnter={() => setCursor(index)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors"
-                    style={{ background: index === cursor ? "var(--bg-inset)" : "transparent" }}
-                  >
-                    <span
-                      className="w-[52px] shrink-0 text-[9.5px] uppercase tracking-wide"
-                      style={{ color: "var(--text-faint)" }}
-                    >
-                      {action.group}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="clip block font-mono text-[12px]">{action.label}</span>
-                      <span className="clip block text-[10.5px]" style={{ color: "var(--text-faint)" }}>
-                        {action.hint}
-                      </span>
-                    </span>
-                    {action.badge ? (
-                      <Badge tone="danger" mono>
-                        {action.badge}
-                      </Badge>
-                    ) : null}
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-          <footer
-            className="flex items-center gap-3 border-t px-3.5 py-2 text-[10px]"
-            style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="命令面板"
+            className="w-[min(620px,calc(100vw-32px))] overflow-hidden rounded-xl border"
+            style={{ background: "var(--bg-elevated)", borderColor: "var(--border-strong)", boxShadow: "var(--shadow-pop)" }}
+            initial={{ opacity: 0, scale: 0.97, y: -8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            transition={SPRING_POP}
+            onClick={(event) => event.stopPropagation()}
           >
-            <span className="flex items-center gap-1">
-              <Kbd>↑</Kbd>
-              <Kbd>↓</Kbd> 选择
-            </span>
-            <span className="flex items-center gap-1">
-              <Kbd>↵</Kbd> 执行
-            </span>
-            <span className="flex items-center gap-1">
-              <Kbd>Esc</Kbd> 关闭
-            </span>
-          </footer>
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown" || (event.key === "n" && event.ctrlKey)) {
+                  event.preventDefault();
+                  setCursor((current) => Math.min(results.length - 1, current + 1));
+                } else if (event.key === "ArrowUp" || (event.key === "p" && event.ctrlKey)) {
+                  event.preventDefault();
+                  setCursor((current) => Math.max(0, current - 1));
+                } else if (event.key === "Enter") {
+                  event.preventDefault();
+                  commit(results[cursor]);
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  onClose();
+                }
+              }}
+              placeholder="搜索命令模板、失败类型，或跳转视图…"
+              className="w-full border-b bg-transparent px-4 py-3.5 text-[13.5px] outline-none"
+              style={{ borderColor: "var(--border)", color: "var(--text)" }}
+            />
+            <ul ref={listRef} className="max-h-[52vh] overflow-y-auto p-1.5">
+              {results.length === 0 ? (
+                <li className="px-3 py-6 text-center text-[12px]" style={{ color: "var(--text-faint)" }}>
+                  没有匹配项
+                </li>
+              ) : (
+                results.map((action, index) => (
+                  <li key={action.id}>
+                    <button
+                      type="button"
+                      onClick={() => commit(action)}
+                      onMouseEnter={() => setCursor(index)}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors"
+                      style={{ background: index === cursor ? "var(--bg-inset)" : "transparent" }}
+                    >
+                      <span
+                        className="w-[52px] shrink-0 text-[9.5px] uppercase tracking-wide"
+                        style={{ color: "var(--text-faint)" }}
+                      >
+                        {action.group}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="clip block font-mono text-[12px]">{action.label}</span>
+                        <span className="clip block text-[10.5px]" style={{ color: "var(--text-faint)" }}>
+                          {action.hint}
+                        </span>
+                      </span>
+                      {action.badge ? (
+                        <Badge tone="danger" mono>
+                          {action.badge}
+                        </Badge>
+                      ) : null}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+            <footer
+              className="flex items-center gap-3 border-t px-3.5 py-2 text-[10px]"
+              style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
+            >
+              <span className="flex items-center gap-1">
+                <Kbd>↑</Kbd>
+                <Kbd>↓</Kbd> 选择
+              </span>
+              <span className="flex items-center gap-1">
+                <Kbd>↵</Kbd> 执行
+              </span>
+              <span className="flex items-center gap-1">
+                <Kbd>Esc</Kbd> 关闭
+              </span>
+            </footer>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      ) : null}
     </AnimatePresence>
   );
 }

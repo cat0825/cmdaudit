@@ -53,6 +53,9 @@
   --text: oklch(0.22 0.008 250);
   --text-muted: oklch(0.48 0.008 250);
   --text-faint: oklch(0.62 0.008 250);
+  /* 告警**文字**专用。--color-warn-400 是双主题共用的浅琥珀，做深色背景上的文字没问题，
+     放在浅色背景上只有 1.8:1。语义色继续用于边框/底色/图形，文字走这个 token。 */
+  --text-warn: oklch(0.50 0.13 62);
   --shadow-card: 0 1px 2px oklch(0.22 0.01 250 / 0.05), 0 1px 3px oklch(0.22 0.01 250 / 0.04);
   --shadow-pop: 0 8px 16px oklch(0.22 0.01 250 / 0.08), 0 24px 48px oklch(0.22 0.01 250 / 0.12);
   --grid-line: oklch(0.92 0.004 250);
@@ -70,6 +73,7 @@
     --text: oklch(0.955 0.003 265);
     --text-muted: oklch(0.70 0.010 265);
     --text-faint: oklch(0.56 0.010 265);
+    --text-warn: oklch(0.82 0.13 80);
     --shadow-card: 0 1px 2px oklch(0 0 0 / 0.30), 0 1px 3px oklch(0 0 0 / 0.24);
     --shadow-pop: 0 8px 16px oklch(0 0 0 / 0.36), 0 24px 56px oklch(0 0 0 / 0.48);
     --grid-line: oklch(0.27 0.010 265);
@@ -87,6 +91,7 @@
   --text: oklch(0.22 0.008 250);
   --text-muted: oklch(0.48 0.008 250);
   --text-faint: oklch(0.62 0.008 250);
+  --text-warn: oklch(0.50 0.13 62);
   --shadow-card: 0 1px 2px oklch(0.22 0.01 250 / 0.05), 0 1px 3px oklch(0.22 0.01 250 / 0.04);
   --shadow-pop: 0 8px 16px oklch(0.22 0.01 250 / 0.08), 0 24px 48px oklch(0.22 0.01 250 / 0.12);
   --grid-line: oklch(0.92 0.004 250);
@@ -103,6 +108,7 @@
   --text: oklch(0.955 0.003 265);
   --text-muted: oklch(0.70 0.010 265);
   --text-faint: oklch(0.56 0.010 265);
+  --text-warn: oklch(0.82 0.13 80);
   --shadow-card: 0 1px 2px oklch(0 0 0 / 0.30), 0 1px 3px oklch(0 0 0 / 0.24);
   --shadow-pop: 0 8px 16px oklch(0 0 0 / 0.36), 0 24px 56px oklch(0 0 0 / 0.48);
   --grid-line: oklch(0.27 0.010 265);
