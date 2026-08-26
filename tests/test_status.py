@@ -218,3 +218,39 @@ def test_command_v_probe_is_no_match(
 def test_compare_programs_exit_one_means_difference(program: str) -> None:
     text = "Process exited with code 1\n< a\n> b"
     assert decide_outcome(text, None, program).status == "no_match"
+
+
+# --- issue #13: completed 不得盖住明确的失败证据 ---
+
+
+def test_completed_does_not_override_error_text() -> None:
+    """`completed` 只说明工具调用返回，不说明命令成功。"""
+    outcome = decide_outcome("Error: boom", "completed")
+    assert outcome.status == "failed"
+    assert outcome.status_source == "text_heuristic"
+    assert outcome.exit_code is None
+
+
+def test_completed_does_not_override_traceback() -> None:
+    outcome = decide_outcome("Traceback (most recent call last):\n  x", "completed")
+    assert outcome.status == "failed"
+
+
+def test_completed_does_not_override_interruption() -> None:
+    outcome = decide_outcome("<turn_aborted> user interrupted", "completed")
+    assert outcome.status == "failed"
+    assert outcome.failure_kind == "interrupted"
+
+
+def test_completed_with_still_running_is_unknown_not_ok() -> None:
+    """命令还在跑：没成功也没失败，不许判 ok，也不许判 failed。"""
+    outcome = decide_outcome("command still running in background", "completed")
+    assert outcome.status == "unknown"
+    assert outcome.failure_kind is None
+
+
+def test_exit_code_zero_still_ignores_error_text() -> None:
+    """红线 1.1 未被放宽：有退出码 0 时仍然不看文本。"""
+    outcome = decide_outcome("Process exited with code 0\nError: boom", "completed")
+    assert outcome.status == "ok"
+    assert outcome.status_source == "exit_code"

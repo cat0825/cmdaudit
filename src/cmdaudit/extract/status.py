@@ -3,12 +3,21 @@
 判定优先级，高位命中即停：
 
 1. 退出码 —— `exit_code == 0` 时直接判 ok，**绝不再看输出文本**；
-2. `tool_result_events.status` —— 非空即用；
+2. `tool_result_events.status` —— 非空即用，但 `completed` 一类的成功值不得
+   盖住输出里的明确失败证据（见下）；
 3. 文本启发式 —— 只在前两级都拿不到时使用。
 
 第 1 条是原型踩坑换来的红线：初版扫全量输出，报错率虚高到 20.3%，
 改成退出码优先后降到 15.6%。那 4.7 个百分点全是读日志时
 输出里出现 `error:` 造成的假阳性。
+
+第 2 条的例外是 issue #13：result event 的 `completed` 只表示**工具调用**
+返回了，不表示**命令**退出成功 —— `extract/duration.py` 的 `looks_truncated`
+用的是同一个事实（工具让出时进程可能还在跑）。所以无退出码时 `completed`
+只在输出里没有失败/中断/未完成证据时才判 ok。
+
+这不是在放宽第 1 条：那条红线只约束 `exit_code == 0`，且仍然不扫文本。
+两者的区别是退出码来自被执行的命令，result event 来自调用它的工具。
 """
 
 from __future__ import annotations
@@ -16,6 +25,7 @@ from __future__ import annotations
 import re
 from typing import Final
 
+from cmdaudit.extract.duration import RE_STILL_RUNNING
 from cmdaudit.models import FailureKind, Outcome
 
 #: 两种退出码格式，实测 `Process exited with code N` 27135 条、`Exit code: N` 402 条。
@@ -224,6 +234,27 @@ def is_no_match(
     return own_error is None
 
 
+def _text_failure(result_content: str | None) -> Outcome | None:
+    """输出文本里的明确失败证据。没有证据返回 None。
+
+    只认两类，刻意保守：已知错误行、中断标记。「命令仍在运行」不在此列 ——
+    那是未完成而不是失败，由调用方单独处理。
+    """
+    if not result_content:
+        return None
+    if _TEXT_FAILURE.search(result_content):
+        return Outcome(
+            "failed",
+            "text_heuristic",
+            None,
+            classify_failure(result_content, None),
+            _snippet(result_content),
+        )
+    if RE_INTERRUPTED.search(result_content):
+        return Outcome("failed", "text_heuristic", None, "interrupted", _snippet(result_content))
+    return None
+
+
 def decide_outcome(
     result_content: str | None,
     result_status: str | None,
@@ -250,6 +281,15 @@ def decide_outcome(
     normalized = (result_status or "").strip().lower()
     if normalized:
         if normalized in {"completed", "success", "ok"}:
+            # issue #13：`completed` 是「工具调用返回了」，不是「命令成功了」。
+            # 无退出码时不得盖住输出里的明确失败证据。
+            failure = _text_failure(result_content)
+            if failure is not None:
+                return failure
+            if result_content and RE_STILL_RUNNING.search(result_content):
+                # 命令还在跑：既没有成功证据也没有失败证据。判 unknown 而不是
+                # failed —— 后者会把「没跑完」说成「跑错了」，那是另一种假阳性。
+                return Outcome("unknown", "text_heuristic", None, None, None)
             return Outcome("ok", "result_event", None, None, None)
         if normalized in {"errored", "error", "failed", "failure"}:
             return Outcome(
@@ -260,15 +300,8 @@ def decide_outcome(
                 _snippet(result_content),
             )
 
-    if result_content and _TEXT_FAILURE.search(result_content):
-        return Outcome(
-            "failed",
-            "text_heuristic",
-            None,
-            classify_failure(result_content, None),
-            _snippet(result_content),
-        )
-    if result_content and RE_INTERRUPTED.search(result_content):
-        return Outcome("failed", "text_heuristic", None, "interrupted", _snippet(result_content))
+    failure = _text_failure(result_content)
+    if failure is not None:
+        return failure
 
     return Outcome("unknown", "none", None, None, None)

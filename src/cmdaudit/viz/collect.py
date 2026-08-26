@@ -63,6 +63,16 @@ HEATMAP_AGENTS: Final[int] = 8
 #: 样本里 error_snippet 的截断长度，避免单条日志撑爆页面。
 _SNIPPET_CHARS: Final[int] = 240
 
+#: 精确口径的完整过滤条件。直方图、分位数、耗时榜、下钻共用这一份，
+#: 否则同一页的几块「耗时」会来自不同行集（issue #6）。
+_EXACT_GUARD: Final[str] = f"{DURATION_GUARD.lstrip()} AND {EXACT.sql_filter}"
+
+#: 「失败率」的分母：只含判定明确的行。
+#: `no_match` 是 rg/grep 查无结果（成功的空查询），`unknown` 是没有状态证据，
+#: 两者都不是成功。把它们算进分母会稀释失败率 —— `report/queries.py` 早已
+#: 确立这个口径，issue #12 是让 finding 侧跟上。
+_DECIDED_ONLY: Final[str] = "status IN ('ok', 'failed')"
+
 _SAMPLE_COLUMNS: Final[str] = f"""
     command,
     agent,
@@ -268,7 +278,7 @@ def _failure_track(conn: duckdb.DuckDBPyConnection, known: frozenset[str]) -> Tr
 
 
 def _duration_track(conn: duckdb.DuckDBPyConnection, known: frozenset[str]) -> Track:
-    guard = f"{DURATION_GUARD.lstrip()} AND {EXACT.sql_filter}"
+    guard = _EXACT_GUARD
     dimension_specs = (
         (Q.by_group(conn, EXACT), "command_group"),
         (Q.by_program(conn, EXACT), "program"),
@@ -434,7 +444,12 @@ def _heatmap(
 
 
 def _duration_profile(conn: duckdb.DuckDBPyConnection) -> DurationProfile:
-    """耗时分布 + 分位数。口径与报告分位数完全一致（DURATION_GUARD）。"""
+    """耗时分布 + 分位数。
+
+    issue #6：口径必须与同页耗时榜一致（`_EXACT_GUARD`）。此前直方图只用
+    `DURATION_GUARD` 而耗时榜叠了 `EXACT.sql_filter`，同一页两块「耗时」来自
+    不同行集，读者会把它们直接比较。
+    """
     edges = _HISTOGRAM_EDGES
     cases = "\n               ".join(
         f"WHEN duration_s < {hi} THEN {pos}" for pos, hi in enumerate(edges[1:])
@@ -447,7 +462,7 @@ def _duration_profile(conn: duckdb.DuckDBPyConnection) -> DurationProfile:
                ELSE {len(edges) - 1}
             END AS bucket
             FROM commands
-            WHERE {DURATION_GUARD}
+            WHERE {_EXACT_GUARD}
         )
         GROUP BY 1 ORDER BY 1
         """
@@ -468,7 +483,7 @@ def _duration_profile(conn: duckdb.DuckDBPyConnection) -> DurationProfile:
                round(quantile_cont(duration_s, 0.99), 3),
                round(max(duration_s), 3),
                count(*)
-        FROM commands WHERE {DURATION_GUARD}
+        FROM commands WHERE {_EXACT_GUARD}
         """
     ).fetchone()
     p50, p90, p99, max_s, size = stats if stats else (None, None, None, None, 0)
@@ -529,7 +544,12 @@ def _findings(
             HAVING count(*) >= {MIN_FINDING_FAILURES}
         ),
         totals AS (
-            SELECT template_id, count(*) AS runs FROM commands GROUP BY 1
+            -- issue #12：分母只含 ok+failed，与 repeated_failures 候选和
+            -- failure_rate_by_program 一致。此前用 count(*) 统计全部状态，
+            -- 同一命令形状在 finding 与候选里会给出不同失败率
+            -- （本机快照上分母 61772 vs 38662，差 22958 条 unknown）。
+            SELECT template_id, count(*) AS runs
+            FROM commands WHERE {_DECIDED_ONLY} GROUP BY 1
         )
         SELECT f.template_id, f.failure_kind, f.failures, f.template, f.program,
                f.first_seen, f.last_seen, COALESCE(t.runs, f.failures) AS runs
