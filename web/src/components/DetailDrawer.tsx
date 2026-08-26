@@ -9,7 +9,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { XIcon } from "@phosphor-icons/react";
 import type { Finding } from "../lib/payload";
 import type { TriageEntry, TriageStatus } from "../lib/triage";
-import { formatCount, formatDay, formatPercent, formatSeconds } from "../lib/format";
+import { formatCount, formatMonthDay, formatPercent, formatSeconds } from "../lib/format";
 import { Badge, Kbd } from "./primitives";
 import { StatusSwitch } from "./StatusPill";
 import { CommandBlock } from "./CommandBlock";
@@ -89,7 +89,11 @@ export function DetailDrawer({
                     ["失败次数", formatCount(finding.failures), "var(--color-danger-500)"],
                     ["执行总数", formatCount(finding.runs), undefined],
                     ["失败率", formatPercent(finding.failures, finding.runs), undefined],
-                    ["首次 / 末次", `${formatDay(finding.first_seen).slice(5)} → ${formatDay(finding.last_seen).slice(5)}`, undefined],
+                    [
+                      "首次 / 末次",
+                      `${formatMonthDay(finding.first_seen)} → ${formatMonthDay(finding.last_seen)}`,
+                      undefined,
+                    ],
                   ] as const
                 ).map(([label, value, color]) => (
                   <div key={label} className="px-3 py-2.5" style={{ background: "var(--bg-elevated)" }}>

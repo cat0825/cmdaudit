@@ -22,7 +22,6 @@ export function useTheme(): {
   choice: ThemeChoice;
   resolved: ResolvedTheme;
   setChoice: (next: ThemeChoice) => void;
-  cycle: () => void;
 } {
   const [choice, setChoiceState] = useState<ThemeChoice>(() => readChoice());
   const [systemDark, setSystemDark] = useState<boolean>(
@@ -58,9 +57,5 @@ export function useTheme(): {
     }
   }, []);
 
-  const cycle = useCallback(() => {
-    setChoice(resolved === "dark" ? "light" : "dark");
-  }, [resolved, setChoice]);
-
-  return { choice, resolved, setChoice, cycle };
+  return { choice, resolved, setChoice };
 }

@@ -51,7 +51,11 @@ export function BoardView({
         return (
           <section
             key={status}
-            className="flex min-h-[220px] flex-col rounded-card border"
+            // min-w-0 不是装饰：grid item 默认 min-width:auto，列内最长命令模板
+            // （实测 1243 字符、nowrap）的 min-content 会沿 LI→UL→SECTION 上传，
+            // 把单列态的轨道撑到 8000px+，整页横向滚动。队列视图用 minmax(0,1fr)
+            // 达到同样效果，这里补齐。
+            className="flex min-h-[220px] min-w-0 flex-col rounded-card border"
             style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
           >
             <header

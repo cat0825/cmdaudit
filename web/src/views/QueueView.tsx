@@ -12,6 +12,7 @@ import { StatusSwitch } from "../components/StatusPill";
 import { STATUS_LABEL, TRIAGE_STATUSES, entryFor, type TriageEntry, type TriageMap, type TriageStatus } from "../lib/triage";
 import { formatCount } from "../lib/format";
 import { LIST_CONTAINER } from "../lib/motion";
+import { isTypingTarget, type KeyScope } from "../lib/keys";
 
 type SortKey = "failures" | "rate" | "last_seen" | "runs";
 type SortDir = "asc" | "desc";
@@ -60,6 +61,7 @@ export function QueueView({
   payload,
   triage,
   selectedId,
+  keyScope,
   onSelect,
   onOpen,
   onPatchMany,
@@ -67,6 +69,8 @@ export function QueueView({
   payload: Payload;
   triage: TriageMap;
   selectedId: string | null;
+  /** 由 App 单点计算的键盘归属，见 `lib/keys.ts`。 */
+  keyScope: KeyScope;
   onSelect: (findingId: string | null) => void;
   onOpen: (findingId: string) => void;
   onPatchMany: (ids: string[], patch: Partial<TriageEntry>) => void;
@@ -144,26 +148,37 @@ export function QueueView({
     setList(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
   };
 
-  // j/k 在队列内移动选中行，x 切换勾选，Enter 打开详情。
+  // j/k 移动选中行，x 切换勾选，Enter 打开详情。
+  // 作用域由 App 下发：面板打开时整层让位；抽屉打开时只留 j/k，并让抽屉内容跟着走
+  // ——抽屉页脚写着「J/K 上下条」，只动选择不动内容就是假承诺。
   useEffect(() => {
+    if (keyScope === "palette") return;
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (isTypingTarget(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
       const index = rows.findIndex((finding) => finding.finding_id === selectedId);
+      const step = (next: Finding | undefined) => {
+        if (!next) return;
+        onSelect(next.finding_id);
+        if (keyScope === "drawer") onOpen(next.finding_id);
+      };
       if (event.key === "j" || event.key === "ArrowDown") {
         event.preventDefault();
-        const next = rows[Math.min(rows.length - 1, index + 1)] ?? rows[0];
-        if (next) onSelect(next.finding_id);
-      } else if (event.key === "k" || event.key === "ArrowUp") {
+        step(rows[Math.min(rows.length - 1, index + 1)] ?? rows[0]);
+        return;
+      }
+      if (event.key === "k" || event.key === "ArrowUp") {
         event.preventDefault();
-        const next = index <= 0 ? rows[0] : rows[index - 1];
-        if (next) onSelect(next.finding_id);
-      } else if (event.key === "Enter" && selectedId) {
+        step(index <= 0 ? rows[0] : rows[index - 1]);
+        return;
+      }
+      // 抽屉打开时 Enter/x 归抽屉，不在背后改列表。
+      if (keyScope !== "list" || !selectedId) return;
+      if (event.key === "Enter") {
         event.preventDefault();
         onOpen(selectedId);
-      } else if (event.key === "x" && selectedId) {
+      } else if (event.key === "x") {
         event.preventDefault();
         setChecked((current) => {
           const next = new Set(current);
@@ -175,7 +190,7 @@ export function QueueView({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [rows, selectedId, onSelect, onOpen]);
+  }, [rows, selectedId, onSelect, onOpen, keyScope]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -184,7 +199,17 @@ export function QueueView({
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedId]);
 
-  const checkedIds = [...checked].filter((id) => rows.some((finding) => finding.finding_id === id));
+  // 勾选集**不**跟着筛选裁剪：勾 5 条后加筛选隐藏 3 条，批量操作仍然对 5 条生效。
+  // 只剔除已不在 payload 里的陈旧 id。可见数单独显示，让「选了但看不见」摊开在界面上。
+  const knownIds = useMemo(
+    () => new Set(payload.findings.map((finding) => finding.finding_id)),
+    [payload.findings],
+  );
+  const checkedIds = useMemo(() => [...checked].filter((id) => knownIds.has(id)), [checked, knownIds]);
+  const hiddenCheckedCount = useMemo(() => {
+    const visible = new Set(rows.map((finding) => finding.finding_id));
+    return checkedIds.filter((id) => !visible.has(id)).length;
+  }, [checkedIds, rows]);
 
   return (
     <div className="grid gap-3">
@@ -270,7 +295,14 @@ export function QueueView({
           animate={{ opacity: 1, y: 0 }}
           className="surface flex flex-wrap items-center gap-3 !p-2.5"
         >
-          <span className="num text-[11.5px] font-medium">已选 {checkedIds.length} 条</span>
+          <span className="num text-[11.5px] font-medium">
+            已选 {checkedIds.length} 条
+            {hiddenCheckedCount > 0 ? (
+              <span className="ml-1.5 font-normal" style={{ color: "var(--text-warn)" }}>
+                含当前筛选外 {hiddenCheckedCount} 条
+              </span>
+            ) : null}
+          </span>
           <StatusSwitch
             value={entryFor(triage, checkedIds[0]!).status}
             size="sm"

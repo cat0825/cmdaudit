@@ -14,10 +14,19 @@ import { DurationHistogram } from "../charts/DurationHistogram";
 import { formatSeconds } from "../lib/format";
 import { LIST_CONTAINER, LIST_ITEM } from "../lib/motion";
 
-function cellText(value: string | number | null): string {
-  if (value === null) return "—";
-  if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString("en-US") : value.toFixed(2);
-  return value;
+/**
+ * 单元格取文本。入参类型已由 `lib/sanitize.ts` 收敛成 string|number|null，
+ * 这里再用 String 兜一层：React 19 对 object child 直接 throw，
+ * 一个字段的契约漂移不该换来整页白屏。
+ */
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "—";
+    return Number.isInteger(value) ? value.toLocaleString("en-US") : value.toFixed(2);
+  }
+  if (typeof value === "string") return value;
+  return String(value);
 }
 
 function RowItem({
@@ -54,15 +63,22 @@ function RowItem({
             </span>
           ) : null}
         </span>
-        {section.columns.slice(1).map((column, index) => (
-          <span
-            key={column}
-            className="num text-right text-[11.5px]"
-            style={{ color: index === barIndex - 1 ? `var(--color-${tone === "danger" ? "danger-500" : "accent-500"})` : "var(--text-muted)" }}
-          >
-            {cellText(row.cells[index + 1] ?? null)}
-          </span>
-        ))}
+        {section.columns.slice(1).map((column, index) => {
+          const value = cellText(row.cells[index + 1] ?? null);
+          return (
+            // clip 是必需的：这些列多数是数字，但失败线里有列装错误片段/命令原文，
+            // 长路径不含可断点、min-content 直接顶穿 96px 轨道造成整页横向滚动。
+            // 截断后靠 title 保留全文，展开行里也有完整样本。
+            <span
+              key={column}
+              className="num clip text-right text-[11.5px]"
+              title={value}
+              style={{ color: index === barIndex - 1 ? `var(--color-${tone === "danger" ? "danger-500" : "accent-500"})` : "var(--text-muted)" }}
+            >
+              {value}
+            </span>
+          );
+        })}
       </button>
 
       {open ? (
@@ -218,9 +234,7 @@ export function EvidenceView({ payload }: { payload: Payload }) {
               <dt className="text-[10.5px]" style={{ color: "var(--text-muted)" }}>
                 {label}
               </dt>
-              <dd className="num mt-1 text-[13.5px] font-semibold">
-                {typeof value === "number" ? value.toLocaleString("en-US") : (value ?? "—")}
-              </dd>
+              <dd className="num mt-1 text-[13.5px] font-semibold">{cellText(value)}</dd>
             </div>
           ))}
         </dl>
@@ -231,7 +245,8 @@ export function EvidenceView({ payload }: { payload: Payload }) {
           <h2 className="text-[13px] font-semibold tracking-tight">生成告警</h2>
           <ul className="mt-2 grid gap-1.5">
             {payload.warnings.map((warning) => (
-              <li key={warning} className="text-[11.5px] leading-relaxed" style={{ color: "var(--color-warn-400)" }}>
+              // 同类告警文字：浅色主题下 --color-warn-400 只有 1.8:1，文字必须走 --text-warn
+              <li key={warning} className="text-[11.5px] leading-relaxed" style={{ color: "var(--text-warn)" }}>
                 {warning}
               </li>
             ))}

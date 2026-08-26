@@ -11,6 +11,7 @@ import { TrendChart } from "../charts/TrendChart";
 import { Heatmap } from "../charts/Heatmap";
 import { formatCount, formatHours, formatPercent } from "../lib/format";
 import { LIST_CONTAINER, LIST_ITEM } from "../lib/motion";
+import { COVERAGE_KEY, coverageNumber } from "../lib/coverage";
 import type { ViewId } from "../lib/views";
 
 const RANGES = [
@@ -18,10 +19,6 @@ const RANGES = [
   { id: "14", label: "14 天", days: 14 },
   { id: "all", label: "全部", days: Number.POSITIVE_INFINITY },
 ] as const;
-
-function numberOf(value: string | number | null | undefined): number {
-  return typeof value === "number" ? value : 0;
-}
 
 export function OverviewView({
   payload,
@@ -48,8 +45,10 @@ export function OverviewView({
     return { runs, failures, duration };
   }, [points]);
 
-  const total = numberOf(coverage["命令总数"]);
-  const failed = numberOf(coverage["判定为失败"]);
+  // coverage 的键由 Python 侧定义，集中在 lib/coverage.ts；缺键会在加载时告警，
+  // 不再是这里静默取到 0。
+  const total = coverageNumber(coverage, COVERAGE_KEY.total);
+  const failed = coverageNumber(coverage, COVERAGE_KEY.failed);
   const maxKind = Math.max(...dashboard.failures_by_kind.map(([, count]) => count), 1);
   const topFindings = findings.slice(0, 6);
   const maxFailures = Math.max(...findings.map((item) => item.failures), 1);
@@ -58,12 +57,12 @@ export function OverviewView({
     {
       label: "命令总数",
       value: formatCount(total),
-      foot: `${formatCount(numberOf(coverage["agent 数"]))} 个 agent · ${formatCount(numberOf(coverage["项目数"]))} 个项目`,
+      foot: `${formatCount(coverageNumber(coverage, COVERAGE_KEY.agents))} 个 agent · ${formatCount(coverageNumber(coverage, COVERAGE_KEY.projects))} 个项目`,
     },
     {
       label: "判定为失败",
       value: formatCount(failed),
-      foot: `占已判定 ${formatPercent(failed, failed + numberOf(coverage["判定为成功"]))}`,
+      foot: `占已判定 ${formatPercent(failed, failed + coverageNumber(coverage, COVERAGE_KEY.succeeded))}`,
       accent: "var(--color-danger-500)",
     },
     {
@@ -77,8 +76,8 @@ export function OverviewView({
     },
     {
       label: "可信耗时合计",
-      value: formatHours(numberOf(coverage["可信耗时合计（秒）"])),
-      foot: `样本 ${formatCount(numberOf(coverage["可用于耗时统计"]))} 条（exact 口径）`,
+      value: formatHours(coverageNumber(coverage, COVERAGE_KEY.durationTotalSeconds)),
+      foot: `样本 ${formatCount(coverageNumber(coverage, COVERAGE_KEY.durationSamples))} 条（exact 口径）`,
       accent: "var(--color-accent-500)",
     },
   ];

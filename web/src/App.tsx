@@ -14,6 +14,8 @@ import { CandidatesView } from "./views/CandidatesView";
 import { isViewId, VIEWS, type ViewId } from "./lib/views";
 import { useTheme } from "./lib/theme";
 import { VIEW_FADE } from "./lib/motion";
+import { isTypingTarget, type KeyScope } from "./lib/keys";
+import { COVERAGE_KEY, coverageNumber } from "./lib/coverage";
 import {
   entryFor,
   loadTriage,
@@ -28,7 +30,14 @@ function initialView(): ViewId {
   return isViewId(hash) ? hash : "overview";
 }
 
-export function App({ payload }: { payload: Payload }) {
+export function App({
+  payload,
+  loadWarnings = [],
+}: {
+  payload: Payload;
+  /** 契约校验的降级说明（`lib/sanitize.ts` 产出），与 payload.warnings 不是一类。 */
+  loadWarnings?: string[];
+}) {
   const [view, setView] = useState<ViewId>(initialView);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -78,12 +87,24 @@ export function App({ payload }: { payload: Payload }) {
 
   const openFinding = useCallback(
     (findingId: string) => {
+      // 不存在的 id 不留任何痕迹：曾经先 setSelectedId 再撤 openId，
+      // 结果是选中态指向一条打不开的记录。
+      if (!findingIndex.has(findingId)) return;
       setSelectedId(findingId);
       setOpenId(findingId);
-      if (!findingIndex.has(findingId)) setOpenId(null);
     },
     [findingIndex],
   );
+
+  const closeDrawer = useCallback(() => {
+    setOpenId(null);
+    // 选中态只在队列视图有可见载体。关抽屉后若停在别的视图还留着 selectedId，
+    // 1–4 会改写一条屏幕上没有任何选中指示的记录。
+    setSelectedId((current) => (view === "queue" ? current : null));
+  }, [view]);
+
+  // 键盘归属：面板 > 抽屉 > 列表。QueueView 按这个值决定放行哪些键。
+  const keyScope: KeyScope = paletteOpen ? "palette" : openId ? "drawer" : "list";
 
   // 全局快捷键：⌘K 面板、Esc 收起、1..4 给当前选中项打状态。
   useEffect(() => {
@@ -95,11 +116,13 @@ export function App({ payload }: { payload: Payload }) {
       }
       if (event.key === "Escape") {
         if (paletteOpen) setPaletteOpen(false);
-        else if (openId) setOpenId(null);
+        else if (openId) closeDrawer();
         return;
       }
-      const target = event.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      // 面板打开时数字键属于面板（未来要加序号跳转也在那一层），这里必须让位，
+      // 否则遮罩后面会被静默改状态。
+      if (keyScope === "palette") return;
+      if (isTypingTarget(event.target)) return;
       const statuses: TriageStatus[] = ["open", "reviewing", "verified", "dismissed"];
       const slot = Number.parseInt(event.key, 10);
       const activeId = openId ?? selectedId;
@@ -110,7 +133,7 @@ export function App({ payload }: { payload: Payload }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [paletteOpen, openId, selectedId, patch]);
+  }, [paletteOpen, openId, selectedId, patch, keyScope, closeDrawer]);
 
   const openCount = useMemo(
     () => payload.findings.filter((finding) => entryFor(triage, finding.finding_id).status === "open").length,
@@ -123,7 +146,7 @@ export function App({ payload }: { payload: Payload }) {
     candidates: payload.candidates.length,
   };
 
-  const commandTotal = typeof payload.coverage["命令总数"] === "number" ? payload.coverage["命令总数"] : 0;
+  const commandTotal = coverageNumber(payload.coverage, COVERAGE_KEY.total);
   const openFindingObject = openId ? (findingIndex.get(openId) ?? null) : null;
 
   return (
@@ -172,6 +195,29 @@ export function App({ payload }: { payload: Payload }) {
           ))}
         </nav>
 
+        {/* 契约降级告警：payload 形状不符会影响所有视图，所以常驻顶部而不是塞进证据页。 */}
+        {loadWarnings.length > 0 ? (
+          <div
+            role="alert"
+            className="mx-4 mt-4 rounded-card border px-3 py-2.5 sm:mx-6"
+            style={{
+              borderColor: "color-mix(in oklab, var(--color-warn-400) 42%, transparent)",
+              background: "color-mix(in oklab, var(--color-warn-400) 10%, transparent)",
+            }}
+          >
+            <p className="text-[11.5px] font-semibold" style={{ color: "var(--text-warn)" }}>
+              payload 契约不符，部分内容已降级渲染
+            </p>
+            <ul className="mt-1 grid gap-0.5">
+              {loadWarnings.map((warning) => (
+                <li key={warning} className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <main className="px-4 pb-16 pt-4 sm:px-6">
           <AnimatePresence mode="wait">
             <motion.div key={view} variants={VIEW_FADE} initial="hidden" animate="visible" exit="exit">
@@ -183,6 +229,7 @@ export function App({ payload }: { payload: Payload }) {
                   payload={payload}
                   triage={triage}
                   selectedId={selectedId}
+                  keyScope={keyScope}
                   onSelect={setSelectedId}
                   onOpen={openFinding}
                   onPatchMany={patch}
@@ -208,7 +255,7 @@ export function App({ payload }: { payload: Payload }) {
         finding={openFindingObject}
         entry={entryFor(triage, openId ?? "")}
         jumpEnabled={view === "queue"}
-        onClose={() => setOpenId(null)}
+        onClose={closeDrawer}
         onPatch={(next) => {
           if (openId) patch([openId], next);
         }}

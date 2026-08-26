@@ -7,14 +7,29 @@ import type { Payload } from "../lib/payload";
 import { Badge, Card, Empty } from "../components/primitives";
 import { LIST_CONTAINER, LIST_ITEM } from "../lib/motion";
 
+/**
+ * `observed` 是 Python 侧整体透传的 `Record<string, unknown>`。
+ * 嵌套对象直接 `String()` 会渲染成 `[object Object]`，所以这里 JSON 兜底。
+ */
+function observedText(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString("en-US") : "—";
+  if (typeof value === "string") return value || "—";
+  if (typeof value === "boolean") return value ? "是" : "否";
+  return JSON.stringify(value) ?? "—";
+}
+
 export function CandidatesView({ payload }: { payload: Payload }) {
   return (
     <div className="grid gap-3">
       <Card>
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[13px] font-semibold tracking-tight">待验证候选</h2>
+          {/* 措辞刻意描述「页面如何对待」而不是断言某个已验证字段：Candidate 契约里
+              并没有 evidence_class，写成 `evidence_class = exploratory` 会让损坏或
+              伪造的 candidates.json 看起来通过了合规校验。schema 级验证见 issue #23。 */}
           <Badge tone="warn" mono>
-            evidence_class = exploratory
+            全部按 exploratory 对待
           </Badge>
         </div>
         <p className="mt-2 max-w-[80ch] text-[11.5px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -72,10 +87,8 @@ export function CandidatesView({ payload }: { payload: Payload }) {
                       <dt className="text-[10px]" style={{ color: "var(--text-faint)" }}>
                         {label}
                       </dt>
-                      <dd className="num mt-0.5 text-[12px] font-medium">
-                        {typeof value === "number"
-                          ? value.toLocaleString("en-US")
-                          : String(value ?? "—")}
+                      <dd className="num mt-0.5 break-all text-[12px] font-medium">
+                        {observedText(value)}
                       </dd>
                     </div>
                   ))}

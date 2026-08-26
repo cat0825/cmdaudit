@@ -2,8 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { App } from "./App";
-import { EMPTY_PAYLOAD, type Payload } from "./lib/payload";
+import { EMPTY_PAYLOAD } from "./lib/payload";
 import { loadFixture, readEmbeddedPayload } from "./lib/load";
+import type { SanitizeResult } from "./lib/sanitize";
 
 const container = document.getElementById("root");
 if (!container) throw new Error("#root missing");
@@ -19,10 +20,10 @@ function fail(message: string): void {
   );
 }
 
-function mount(payload: Payload): void {
+function mount({ payload, warnings }: SanitizeResult): void {
   root.render(
     <StrictMode>
-      <App payload={payload} />
+      <App payload={payload} loadWarnings={warnings} />
     </StrictMode>,
   );
 }
@@ -36,7 +37,7 @@ try {
     loadFixture()
       .then(mount)
       .catch(() => {
-        if (import.meta.env.DEV) mount(EMPTY_PAYLOAD);
+        if (import.meta.env.DEV) mount({ payload: EMPTY_PAYLOAD, warnings: [] });
         else fail("页面里没有找到内嵌 payload。");
       });
   }
