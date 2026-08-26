@@ -6,6 +6,7 @@ from cmdaudit.extract.duration import (
     TURN_DELTA_CEILING_S,
     UNKNOWN,
     YIELD_CEILING_S,
+    TruncationPolicy,
     looks_truncated,
     parse_inner_wall_times,
     parse_outer_wall_time,
@@ -141,3 +142,45 @@ def test_mark_truncated_is_a_noop_when_not_truncated() -> None:
 
     durations = [Duration(1.0, "self_reported")]
     assert mark_truncated(durations, truncated=False) == durations
+
+
+# --- issue #30: 让出上限可配置，直接证据优先 ---
+
+
+def test_ceiling_is_configurable() -> None:
+    """10s / 60s 配置下阈值跟着变，不再写死 29.9。"""
+    ten = TruncationPolicy(yield_ceiling_s=10.0)
+    sixty = TruncationPolicy(yield_ceiling_s=60.0)
+    assert looks_truncated("some output", None, 12.0, policy=ten) is True
+    assert looks_truncated("some output", None, 12.0, policy=sixty) is False
+    assert looks_truncated("some output", None, 61.0, policy=sixty) is True
+
+
+def test_ceiling_can_be_disabled() -> None:
+    """关掉纯耗时兜底后只认直接证据。换 agent 时这是最安全的配置。"""
+    off = TruncationPolicy(yield_ceiling_s=None)
+    assert looks_truncated("some output", None, 3600.0, policy=off) is False
+    assert looks_truncated("still running", None, 1.0, policy=off) is True
+
+
+def test_direct_evidence_beats_ceiling() -> None:
+    """直接证据不依赖阈值：耗时远低于上限也照样标截断。"""
+    assert looks_truncated("SESSION_ID=abc", None, 0.5) is True
+
+
+def test_explicit_exit_wins_over_everything() -> None:
+    """长命令已明确退出：既不看直接证据也不看阈值。"""
+    assert looks_truncated("still running", 0, 120.0) is False
+    assert looks_truncated("still running", 1, 120.0) is False
+
+
+def test_policy_is_recorded_for_artifacts() -> None:
+    """产物必须能说出自己是按什么策略标的。"""
+    assert TruncationPolicy().as_dict() == {
+        "truncation_strategy": "direct_evidence_then_ceiling",
+        "yield_ceiling_s": YIELD_CEILING_S,
+    }
+    assert TruncationPolicy(yield_ceiling_s=None).as_dict() == {
+        "truncation_strategy": "direct_evidence_only",
+        "yield_ceiling_s": None,
+    }

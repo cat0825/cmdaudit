@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Final
 
 from cmdaudit.models import Duration
@@ -72,13 +73,42 @@ def _trusted_delta(turn_delta_s: float | None) -> float | None:
 #: 阈值有数据支撑而不是猜的：无退出码的自报耗时里 `>=29.9s` 有 632 条，
 #: 而 `20-29.9s` 只有 69 条 —— 这个断崖说明 30 秒是让出上限不是真实分布。
 #: 有退出码的对照组里 `>=29.9s` 只有 15 条。
+#:
+#: 但它只是**本机 Codex 的默认值**，不是跨环境常量（issue #30）。换成 10s / 60s
+#: 配置后纯耗时阈值会漏标或误标，所以它现在是 `TruncationPolicy` 的默认值而非
+#: 判定逻辑里的硬编码，且随产物一起记录。
 YIELD_CEILING_S: Final[float] = 29.9
+
+
+@dataclass(frozen=True, slots=True)
+class TruncationPolicy:
+    """截断判定策略。随产物记录，让旧数据能解释自己是按什么口径标的。
+
+    `yield_ceiling_s` 是采集环境的属性（工具的 `yield_time_ms` 配置），
+    不是本库的常量。给 `None` 表示不启用纯耗时兜底，只认直接证据 ——
+    换 agent 或改配置时这是最安全的选择。
+    """
+
+    yield_ceiling_s: float | None = YIELD_CEILING_S
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "truncation_strategy": "direct_evidence_then_ceiling"
+            if self.yield_ceiling_s is not None
+            else "direct_evidence_only",
+            "yield_ceiling_s": self.yield_ceiling_s,
+        }
+
+
+DEFAULT_TRUNCATION_POLICY: Final[TruncationPolicy] = TruncationPolicy()
 
 
 def looks_truncated(
     result_content: str | None,
     exit_code: int | None,
     duration_s: float | None = None,
+    *,
+    policy: TruncationPolicy = DEFAULT_TRUNCATION_POLICY,
 ) -> bool:
     """判断这条记录的耗时是否被工具让出截断。
 
@@ -89,16 +119,21 @@ def looks_truncated(
     那个字段说的是「工具调用完成」，不是「命令退出」。
     实测 `gh pr checks --watch` 被挂到后台会话（输出以 `SESSION_ID=` 结尾），
     工具侧标记为 completed，但命令仍在跑，30 秒只是让出时刻。
+
+    证据优先级（issue #30）：**先看直接证据，再看纯耗时阈值**。
+    `still running` / `SESSION_ID=` 这类文本是命令没退出的直接证据，与采集环境的
+    让出配置无关，换 agent 也成立。纯耗时阈值只是兜底，它依赖 `yield_ceiling_s`
+    是否与实际配置一致，所以放在后面，且可以关掉。
     """
     if exit_code is not None:
         # 有退出码就是真的跑完了，哪怕耗时正好贴着上限。
         return False
-    # 贴着让出上限又没有退出码：命令没退出，30 秒只是让出时刻。
-    if duration_s is not None and duration_s >= YIELD_CEILING_S:
+    # 直接证据：命令自己说了还在跑。不依赖任何阈值。
+    if result_content and RE_STILL_RUNNING.search(result_content):
         return True
-    if not result_content:
-        return False
-    return bool(RE_STILL_RUNNING.search(result_content))
+    # 兜底：贴着让出上限又没有退出码。仅在策略启用了阈值时生效。
+    ceiling = policy.yield_ceiling_s
+    return ceiling is not None and duration_s is not None and duration_s >= ceiling
 
 
 def mark_truncated(durations: list[Duration], *, truncated: bool) -> list[Duration]:
