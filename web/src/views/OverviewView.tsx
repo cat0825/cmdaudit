@@ -14,11 +14,27 @@ import { LIST_CONTAINER, LIST_ITEM } from "../lib/motion";
 import { COVERAGE_KEY, coverageNumber } from "../lib/coverage";
 import type { ViewId } from "../lib/views";
 
+/**
+ * issue #17：这里的「7 天」此前是「最近 7 个有数据的日期」—— 后端按 day 分组后
+ * LIMIT 21，前端再 slice(-7)。稀疏使用时那 7 个活跃日可能跨越数周甚至数月，
+ * 而按钮上写的是「7 天」。
+ *
+ * 改成真实日历窗：以数据里的最后一天为锚点，按日期过滤而不是按数组位置切片。
+ * 窗口内没有活动的日期就是没有数据点，不填零 —— 那会把「没跑」画成「跑了 0 次」。
+ */
 const RANGES = [
   { id: "7", label: "7 天", days: 7 },
   { id: "14", label: "14 天", days: 14 },
-  { id: "all", label: "全部", days: Number.POSITIVE_INFINITY },
+  { id: "all", label: "全部", days: null },
 ] as const;
+
+/** `YYYY-MM-DD` 往前推 n 天。用 UTC 避免本地时区把日期挪一天。 */
+function shiftDay(day: string, n: number): string {
+  const at = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(at.getTime())) return day;
+  at.setUTCDate(at.getUTCDate() - n);
+  return at.toISOString().slice(0, 10);
+}
 
 export function OverviewView({
   payload,
@@ -32,17 +48,34 @@ export function OverviewView({
   const [range, setRange] = useState<(typeof RANGES)[number]["id"]>("14");
   const { dashboard, coverage, findings } = payload;
 
-  const points = useMemo(() => {
-    const days = RANGES.find((item) => item.id === range)?.days ?? 14;
-    if (!Number.isFinite(days)) return dashboard.timeline;
-    return dashboard.timeline.slice(-days);
-  }, [dashboard.timeline, range]);
+  const timeline = dashboard.timeline;
+  //锚点是数据里的最后一天，不是今天：审计时最后一次跑 agent 可能是几天前，
+  // 用今天当锚点会让「7 天」窗口大概率空着。
+  const anchor = timeline.at(-1)?.day ?? null;
+
+  const { points, windowLabel } = useMemo(() => {
+    const days = RANGES.find((item) => item.id === range)?.days ?? null;
+    if (days === null || anchor === null) {
+      // 「全部」受后端 LIMIT 约束，是活跃日不是日历日，标签必须说清。
+      const span = timeline.length;
+      return {
+        points: timeline,
+        windowLabel: span > 0 ? `最近 ${span} 个有数据的日期` : "没有时间数据",
+      };
+    }
+    const from = shiftDay(anchor, days - 1);
+    return {
+      points: timeline.filter((point) => point.day >= from),
+      windowLabel: `${from} 至 ${anchor}（${days} 个日历日）`,
+    };
+  }, [timeline, range, anchor]);
 
   const windowStats = useMemo(() => {
     const runs = points.reduce((total, point) => total + point.runs, 0);
     const failures = points.reduce((total, point) => total + point.failures, 0);
-    const duration = points.reduce((total, point) => total + point.duration_s, 0);
-    return { runs, failures, duration };
+    // 窗口内有数据的日期数。与日历日数不同，稀疏使用时差得很远。
+    const activeDays = points.length;
+    return { runs, failures, activeDays };
   }, [points]);
 
   // coverage 的键由 Python 侧定义，集中在 lib/coverage.ts；缺键会在加载时告警，
@@ -53,16 +86,18 @@ export function OverviewView({
   const topFindings = findings.slice(0, 6);
   const maxFailures = Math.max(...findings.map((item) => item.failures), 1);
 
+  // 四张卡全部是全历史口径，不受时间按钮影响（issue #17：此前没说，读者会以为
+  // 同屏所有数字共用一个窗口）。
   const metrics = [
     {
       label: "命令总数",
       value: formatCount(total),
-      foot: `${formatCount(coverageNumber(coverage, COVERAGE_KEY.agents))} 个 agent · ${formatCount(coverageNumber(coverage, COVERAGE_KEY.projects))} 个项目`,
+      foot: `全历史 · ${formatCount(coverageNumber(coverage, COVERAGE_KEY.agents))} 个 agent · ${formatCount(coverageNumber(coverage, COVERAGE_KEY.projects))} 个项目`,
     },
     {
       label: "判定为失败",
       value: formatCount(failed),
-      foot: `占已判定 ${formatPercent(failed, failed + coverageNumber(coverage, COVERAGE_KEY.succeeded))}`,
+      foot: `全历史 · 占已判定 ${formatPercent(failed, failed + coverageNumber(coverage, COVERAGE_KEY.succeeded))}`,
       accent: "var(--color-danger-500)",
     },
     {
@@ -112,7 +147,10 @@ export function OverviewView({
         <Card>
           <CardHead
             title="运行信号"
-            hint="左轴执行次数（面积），右轴失败次数（红线）。两轴量级不同，只看形状不看交点。"
+            hint={
+              "左轴执行次数（面积），右轴失败次数（红线）。两轴量级不同，只看形状不看交点。" +
+              `范围只作用于本图与下方三项窗口统计，同屏其他区块不随它变。当前：${windowLabel}。`
+            }
             action={
               <div
                 className="inline-flex items-center gap-px rounded-lg border p-px"
@@ -153,11 +191,19 @@ export function OverviewView({
               <dt>窗口失败率</dt>
               <dd className="num" style={{ color: "var(--text)" }}>{formatPercent(windowStats.failures, windowStats.runs)}</dd>
             </div>
+            <div className="flex gap-1.5">
+              <dt>其中有数据的日期</dt>
+              {/* 日历日与活跃日的差就是稀疏程度。issue #17 前者被当成后者用。 */}
+              <dd className="num" style={{ color: "var(--text)" }}>{formatCount(windowStats.activeDays)}</dd>
+            </div>
           </dl>
         </Card>
 
         <Card>
-          <CardHead title="失败类型构成" hint="按 failure_kind 聚合全部已判定失败。" />
+          <CardHead
+            title="失败类型构成"
+            hint="按 failure_kind 聚合全部已判定失败。范围是全历史，不受左侧时间按钮影响。"
+          />
           <ul className="mt-3.5 grid gap-2.5">
             {dashboard.failures_by_kind.map(([kind, count]) => (
               <li key={kind} className="grid grid-cols-[76px_1fr_58px] items-center gap-2.5">
@@ -181,7 +227,11 @@ export function OverviewView({
       <Card>
         <CardHead
           title="agent × 日期 失败密度"
-          hint="每格一天。虚线格代表该 agent 当天没跑命令，与「跑了但零失败」是两件事。"
+          hint={
+            "每格一天。虚线格代表该 agent 当天没跑命令，与「跑了但零失败」是两件事。" +
+            // issue #17：这里是活跃日不是日历日，且与上方时间按钮无关，必须说清。
+            `范围是最近 ${dashboard.heatmap_days.length} 个有数据的日期，不受上方时间按钮影响。`
+          }
         />
         <div className="mt-3.5">
           {dashboard.heatmap_agents.length > 0 ? (
