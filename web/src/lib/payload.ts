@@ -108,6 +108,35 @@ export interface Finding {
   drill_sql: string;
 }
 
+export interface RetryLoop {
+  loop_id: string;
+  session_id: string;
+  agent: string;
+  project: string;
+  template: string;
+  template_id: string;
+  tries: number;
+  failures: number;
+  /** 只累加可信耗时（DURATION_GUARD 口径），是下界，不含价值判断。 */
+  wasted_s: number;
+  first_seen: string | null;
+  last_seen: string | null;
+  /** 按时间正序、**不去重**：重复原文正是重试链要展示的东西。 */
+  samples: Sample[];
+  drill_sql: string;
+}
+
+export interface GroupProfile {
+  group: string;
+  runs: number;
+  failures: number;
+  /** 由 Python 侧算好；渲染层不做数值运算。 */
+  failure_pct: number;
+  duration_s: number;
+  top_programs: [string, number][];
+  drill_sql: string;
+}
+
 export interface Dashboard {
   timeline: TimelinePoint[];
   failures_by_kind: [string, number][];
@@ -127,6 +156,10 @@ export interface Payload {
   /** 未截断的 finding 总条数；`findings` 被 MAX_FINDINGS 截断时 KPI 必须用它。 */
   findings_total: number;
   findings: Finding[];
+  /** 未截断的重试链总条数；`retry_loops` 被截断时 KPI 必须用它。 */
+  retry_loops_total: number;
+  retry_loops: RetryLoop[];
+  group_profiles: GroupProfile[];
   dashboard: Dashboard;
   candidates: Candidate[];
   candidate_note: string;
@@ -141,6 +174,9 @@ export const EMPTY_PAYLOAD: Payload = {
   tracks: [],
   findings_total: 0,
   findings: [],
+  retry_loops_total: 0,
+  retry_loops: [],
+  group_profiles: [],
   dashboard: {
     timeline: [],
     failures_by_kind: [],

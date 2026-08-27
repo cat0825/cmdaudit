@@ -61,7 +61,7 @@ export const Heatmap = memo(function Heatmap({
           {grid.map((row, rowIndex) => (
             <div key={agents[rowIndex]} className="contents">
               <span
-                className="clip pr-2 font-mono text-[10px] leading-[13px]"
+                className="clip self-center pr-2 font-mono t-eyebrow-cjk"
                 style={{ color: "var(--text-muted)" }}
                 title={agents[rowIndex]}
               >
@@ -109,7 +109,7 @@ export const Heatmap = memo(function Heatmap({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "var(--text-faint)" }}>
+        <div className="flex items-center gap-1.5 t-tertiary" style={{ color: "var(--text-faint)" }}>
           <span>少</span>
           {LEVEL_ALPHA.map((alpha, index) => (
             <span
@@ -131,7 +131,7 @@ export const Heatmap = memo(function Heatmap({
             未运行
           </span>
         </div>
-        <p className="font-mono text-[10px]" style={{ color: "var(--text-faint)" }}>
+        <p className="font-mono t-eyebrow-cjk" style={{ color: "var(--text-faint)" }}>
           {hover?.cell
             ? `${hover.agent} · ${hover.day} · ${formatCount(hover.cell.runs)} 次执行 · ${formatCount(hover.cell.failures)} 次失败 · ${formatPercent(hover.cell.failures, hover.cell.runs)}`
             : `${days[0] ?? "—"} → ${days[days.length - 1] ?? "—"}`}

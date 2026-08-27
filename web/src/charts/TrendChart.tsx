@@ -35,21 +35,21 @@ function ChartTooltip({
   if (!datum) return null;
   return (
     <div
-      className="pointer-events-none rounded-lg border px-2.5 py-2 text-[11px]"
+      className="pointer-events-none rounded-control border px-2.5 py-2 t-label"
       style={{
         background: "var(--bg-elevated)",
         borderColor: "var(--border-strong)",
         boxShadow: "var(--shadow-pop)",
       }}
     >
-      <p className="mb-1 font-mono text-[10.5px]" style={{ color: "var(--text-faint)" }}>
+      <p className="mb-1 font-mono t-label" style={{ color: "var(--text-faint)" }}>
         {datum.day}
       </p>
       <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5">
         <dt style={{ color: "var(--text-muted)" }}>执行</dt>
         <dd className="num text-right">{formatCount(datum.runs)}</dd>
-        <dt style={{ color: "var(--color-danger-500)" }}>失败</dt>
-        <dd className="num text-right" style={{ color: "var(--color-danger-500)" }}>
+        <dt style={{ color: "var(--text-danger)" }}>失败</dt>
+        <dd className="num text-right" style={{ color: "var(--text-danger)" }}>
           {formatCount(datum.failures)}
         </dd>
         <dt style={{ color: "var(--text-muted)" }}>失败率</dt>
@@ -74,12 +74,6 @@ export const TrendChart = memo(function TrendChart({ points }: { points: Timelin
     <div className="h-[188px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -18 }}>
-          <defs>
-            <linearGradient id="runsFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--color-accent-400)" stopOpacity={0.26} />
-              <stop offset="100%" stopColor="var(--color-accent-400)" stopOpacity={0.01} />
-            </linearGradient>
-          </defs>
           <CartesianGrid stroke="var(--grid-line)" strokeDasharray="2 4" vertical={false} />
           <XAxis
             dataKey="label"
@@ -99,7 +93,8 @@ export const TrendChart = memo(function TrendChart({ points }: { points: Timelin
           <YAxis
             yAxisId="failures"
             orientation="right"
-            tick={{ fontSize: 10, fill: "var(--color-danger-500)", fontFamily: "var(--font-mono)" }}
+            /* 轴刻度是文字，走 --text-danger（4.5），不是笔画档 --color-danger-500。 */
+            tick={{ fontSize: 10, fill: "var(--text-danger)", fontFamily: "var(--font-mono)" }}
             axisLine={false}
             tickLine={false}
             width={30}
@@ -112,12 +107,12 @@ export const TrendChart = memo(function TrendChart({ points }: { points: Timelin
             yAxisId="runs"
             type="monotone"
             dataKey="runs"
-            stroke="var(--color-accent-400)"
+            stroke="var(--signal-live)"
             strokeWidth={1.75}
-            fill="url(#runsFill)"
+            fill="color-mix(in oklab, var(--signal-live) 14%, transparent)"
             animationDuration={520}
             dot={false}
-            activeDot={{ r: 3, strokeWidth: 0, fill: "var(--color-accent-400)" }}
+            activeDot={{ r: 3, strokeWidth: 0, fill: "var(--signal-live)" }}
           />
           <Line
             yAxisId="failures"

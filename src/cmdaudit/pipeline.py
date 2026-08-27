@@ -8,9 +8,17 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from typing import Final
 
 from cmdaudit.extract.command import extract_commands
-from cmdaudit.extract.duration import looks_truncated, mark_truncated, resolve_durations
+from cmdaudit.extract.duration import (
+    DEFAULT_TRUNCATION_POLICY,
+    YIELD_CEILING_S,
+    TruncationPolicy,
+    looks_truncated,
+    mark_truncated,
+    resolve_durations,
+)
 from cmdaudit.extract.shellparse import parse_programs
 from cmdaudit.extract.status import decide_outcome
 from cmdaudit.models import CommandRecord, RawCall
@@ -43,6 +51,15 @@ class ExtractStats:
         }
 
 
+#: 旧产物没有截断策略字段时的兼容默认值（issue #30）。
+#: 它们全部是在写死 29.9s 的版本下抽取的，所以按那个口径解释。
+LEGACY_TRUNCATION_POLICY: Final[dict[str, object]] = {
+    "truncation_strategy": "direct_evidence_then_ceiling",
+    "yield_ceiling_s": YIELD_CEILING_S,
+    "policy_source": "legacy_default",
+}
+
+
 def _parse_ts(value: str | None) -> dt.datetime | None:
     if not value:
         return None
@@ -65,6 +82,7 @@ def build_records(
     *,
     engine: TemplateEngine | None = None,
     stats: ExtractStats | None = None,
+    truncation: TruncationPolicy = DEFAULT_TRUNCATION_POLICY,
 ) -> Iterator[CommandRecord]:
     template_engine = engine if engine is not None else TemplateEngine()
     counters = stats if stats is not None else ExtractStats()
@@ -89,7 +107,9 @@ def build_records(
         # 截断判定要看最终耗时值（贴着让出上限且无退出码即为截断），
         # 所以先算耗时再标记。
         longest = max((d.seconds for d in durations if d.seconds is not None), default=None)
-        truncated = looks_truncated(call.result_content, probe.exit_code, longest)
+        truncated = looks_truncated(
+            call.result_content, probe.exit_code, longest, policy=truncation
+        )
         durations = mark_truncated(durations, truncated=truncated)
         if truncated:
             counters.duration_truncated += 1

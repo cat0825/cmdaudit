@@ -35,7 +35,7 @@ export function DetailDrawer({
           <motion.div
             key="scrim"
             className="fixed inset-0 z-30"
-            style={{ background: "oklch(0.15 0.01 265 / 0.32)" }}
+            style={{ background: "var(--scrim)" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -45,7 +45,7 @@ export function DetailDrawer({
           <motion.aside
             key="drawer"
             aria-label="失败模式详情"
-            className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l sm:w-[min(560px,92vw)]"
+            className="fixed inset-y-0 right-0 z-40 flex w-full flex-col rounded-panel border-l sm:w-[min(560px,92vw)]"
             style={{ background: "var(--bg-elevated)", borderColor: "var(--border)", boxShadow: "var(--shadow-pop)" }}
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
@@ -64,7 +64,7 @@ export function DetailDrawer({
                   <Badge mono>{finding.program || "—"}</Badge>
                   <Badge mono>{finding.template_id}</Badge>
                 </div>
-                <code className="mt-2 block break-all font-mono text-[13px] font-medium">
+                <code className="mt-2 block break-all font-mono t-body">
                   {finding.template}
                 </code>
               </div>
@@ -72,7 +72,7 @@ export function DetailDrawer({
                 type="button"
                 onClick={onClose}
                 aria-label="关闭"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border transition-colors hover:bg-[var(--bg-inset)]"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-control border transition-colors hover:bg-[var(--bg-inset)]"
                 style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
               >
                 <XIcon size={13} />
@@ -86,7 +86,7 @@ export function DetailDrawer({
               >
                 {(
                   [
-                    ["失败次数", formatCount(finding.failures), "var(--color-danger-500)"],
+                    ["失败次数", formatCount(finding.failures), "var(--text-danger)"],
                     ["执行总数", formatCount(finding.runs), undefined],
                     ["失败率", formatPercent(finding.failures, finding.runs), undefined],
                     [
@@ -97,10 +97,10 @@ export function DetailDrawer({
                   ] as const
                 ).map(([label, value, color]) => (
                   <div key={label} className="px-3 py-2.5" style={{ background: "var(--bg-elevated)" }}>
-                    <dt className="text-[9.5px]" style={{ color: "var(--text-faint)" }}>
+                    <dt className="t-label" style={{ color: "var(--text-faint)" }}>
                       {label}
                     </dt>
-                    <dd className="num mt-1 text-[13px] font-semibold" style={{ color }}>
+                    <dd className="num mt-1 t-body font-medium" style={{ color }}>
                       {value}
                     </dd>
                   </div>
@@ -110,8 +110,8 @@ export function DetailDrawer({
               {/* 人的判断区 */}
               <section className="border-b px-5 py-4" style={{ borderColor: "var(--border)" }}>
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-[12px] font-semibold">处理状态</h3>
-                  <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                  <h3 className="t-body font-medium">处理状态</h3>
+                  <p className="t-eyebrow-cjk" style={{ color: "var(--text-faint)" }}>
                     存本机浏览器，不写入数据库
                   </p>
                 </div>
@@ -123,19 +123,19 @@ export function DetailDrawer({
                 </div>
                 <div className="mt-3 grid gap-2.5">
                   <label className="grid gap-1">
-                    <span className="text-[10.5px]" style={{ color: "var(--text-muted)" }}>
+                    <span className="t-label" style={{ color: "var(--text-muted)" }}>
                       负责人
                     </span>
                     <input
                       value={entry.owner}
                       onChange={(event) => onPatch({ owner: event.target.value })}
                       placeholder="谁在跟这条"
-                      className="rounded-lg border px-2.5 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--color-accent-400)]"
+                      className="rounded-control border px-2.5 py-1.5 t-mono outline-none transition-colors focus:border-[var(--color-accent-400)]"
                       style={{ background: "var(--bg-inset)", borderColor: "var(--border)", color: "var(--text)" }}
                     />
                   </label>
                   <label className="grid gap-1">
-                    <span className="text-[10.5px]" style={{ color: "var(--text-muted)" }}>
+                    <span className="t-label" style={{ color: "var(--text-muted)" }}>
                       结论 / 反事实实验记录
                     </span>
                     <textarea
@@ -143,12 +143,12 @@ export function DetailDrawer({
                       onChange={(event) => onPatch({ note: event.target.value })}
                       rows={3}
                       placeholder="改了什么、有没有复现、下一步验证怎么设计"
-                      className="resize-y rounded-lg border px-2.5 py-1.5 text-[12px] leading-relaxed outline-none transition-colors focus:border-[var(--color-accent-400)]"
+                      className="resize-y rounded-control border px-2.5 py-1.5 t-mono outline-none transition-colors focus:border-[var(--color-accent-400)]"
                       style={{ background: "var(--bg-inset)", borderColor: "var(--border)", color: "var(--text)" }}
                     />
                   </label>
                   {entry.updated_at ? (
-                    <p className="num text-[10px]" style={{ color: "var(--text-faint)" }}>
+                    <p className="num t-eyebrow-cjk" style={{ color: "var(--text-faint)" }}>
                       更新于 {entry.updated_at.slice(0, 16).replace("T", " ")}
                     </p>
                   ) : null}
@@ -158,8 +158,8 @@ export function DetailDrawer({
               {/* 证据区 */}
               <section className="px-5 py-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-[12px] font-semibold">命令原文样本</h3>
-                  <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                  <h3 className="t-body font-medium">命令原文样本</h3>
+                  <p className="t-eyebrow-cjk" style={{ color: "var(--text-faint)" }}>
                     最近 {finding.samples.length} 条，来自 commands 表
                   </p>
                 </div>
@@ -167,7 +167,7 @@ export function DetailDrawer({
                   {finding.samples.map((sample, index) => (
                     <li
                       key={`${sample.command}-${index}`}
-                      className="rounded-lg border p-2.5"
+                      className="rounded-card border p-2.5"
                       style={{ borderColor: "var(--border)", background: "var(--bg)" }}
                     >
                       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -196,7 +196,7 @@ export function DetailDrawer({
             </div>
 
             <footer
-              className="flex items-center justify-between gap-3 border-t px-5 py-2.5 text-[10.5px]"
+              className="flex items-center justify-between gap-3 border-t px-5 py-2.5 t-label"
               style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
             >
               {jumpEnabled ? (

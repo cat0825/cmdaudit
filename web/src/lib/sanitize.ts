@@ -16,9 +16,11 @@ import {
   type DurationProfile,
   type Finding,
   type FindingSignal,
+  type GroupProfile,
   type HeatCell,
   type HistogramBin,
   type Payload,
+  type RetryLoop,
   type Row,
   type Sample,
   type Section,
@@ -210,6 +212,38 @@ function finding(value: unknown, index: number, warn: Warnings): Finding {
   };
 }
 
+function retryLoop(value: unknown, index: number, warn: Warnings): RetryLoop {
+  const r = rec(value);
+  return {
+    loop_id: str(r.loop_id) || `loop-${index}`,
+    session_id: str(r.session_id, "—"),
+    agent: str(r.agent, "—"),
+    project: str(r.project),
+    template: str(r.template, "—"),
+    template_id: str(r.template_id, "—"),
+    tries: num(r.tries),
+    failures: num(r.failures),
+    wasted_s: num(r.wasted_s),
+    first_seen: nullableStr(r.first_seen),
+    last_seen: nullableStr(r.last_seen),
+    samples: list(r.samples, "retry_loops[].samples", warn, sample),
+    drill_sql: str(r.drill_sql),
+  };
+}
+
+function groupProfile(value: unknown, index: number, warn: Warnings): GroupProfile {
+  const r = rec(value);
+  return {
+    group: str(r.group) || `group-${index}`,
+    runs: num(r.runs),
+    failures: num(r.failures),
+    failure_pct: num(r.failure_pct),
+    duration_s: num(r.duration_s),
+    top_programs: pairList(r.top_programs, "group_profiles[].top_programs", warn),
+    drill_sql: str(r.drill_sql),
+  };
+}
+
 function signalPoint(value: unknown): FindingSignal {
   const r = rec(value);
   return { day: str(r.day), failures: num(r.failures) };
@@ -328,8 +362,12 @@ export function sanitizePayload(parsed: unknown): SanitizeResult {
   const findings = list(parsed.findings, "findings", warn, (item, index) =>
     finding(item, index, warn),
   );
+  const retryLoops = list(parsed.retry_loops, "retry_loops", warn, (item, index) =>
+    retryLoop(item, index, warn),
+  );
   // findings_total 是未截断总数，必须 ≥ 实际条数，否则总览会算出负的「省略 N 条」。
   const total = Math.max(num(parsed.findings_total), findings.length);
+  const loopTotal = Math.max(num(parsed.retry_loops_total), retryLoops.length);
   return {
     payload: {
       generated_at: str(parsed.generated_at, "—"),
@@ -338,6 +376,11 @@ export function sanitizePayload(parsed: unknown): SanitizeResult {
       tracks: list(parsed.tracks, "tracks", warn, (item, index) => track(item, index, warn)),
       findings_total: total,
       findings,
+      retry_loops_total: loopTotal,
+      retry_loops: retryLoops,
+      group_profiles: list(parsed.group_profiles, "group_profiles", warn, (item, index) =>
+        groupProfile(item, index, warn),
+      ),
       dashboard: dashboard(parsed.dashboard, warn),
       candidates: list(parsed.candidates, "candidates", warn, candidate),
       candidate_note: str(parsed.candidate_note),

@@ -10,12 +10,15 @@ export const STATUS_TONE: Record<TriageStatus, BadgeTone> = {
   dismissed: "neutral",
 };
 
+/* 这一份值同时当 pill 文字色和 StatusDot 的填充色，所以取**文字档**：
+   文字要 4.5，圆点作为图形只要 3:1，取严的那档即可两用。
+   实测：--color-danger-500 在暗/亮 pill 底上分别只有 3.32 / 3.73。 */
 const TONE_COLOR: Record<BadgeTone, string> = {
   neutral: "var(--text-faint)",
-  accent: "var(--color-accent-500)",
-  danger: "var(--color-danger-500)",
-  warn: "var(--color-warn-400)",
-  ok: "var(--color-ok-400)",
+  accent: "var(--text-accent)",
+  danger: "var(--text-danger)",
+  warn: "var(--text-warn)",
+  ok: "var(--text-ok)",
 };
 
 export function StatusDot({ status }: { status: TriageStatus }) {
@@ -32,7 +35,7 @@ export function StatusPill({ status }: { status: TriageStatus }) {
   const color = TONE_COLOR[STATUS_TONE[status]];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-1.5 py-[3px] text-[10.5px] font-medium leading-none"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-control border px-1.5 py-[3px] t-label font-medium leading-none"
       style={{
         color,
         borderColor: `color-mix(in oklab, ${color} 32%, transparent)`,
@@ -59,7 +62,7 @@ export function StatusSwitch({
     <div
       role="group"
       aria-label="处理状态"
-      className="inline-flex items-center gap-px overflow-hidden rounded-lg border p-px"
+      className="inline-flex items-center gap-px overflow-hidden rounded-control border p-px"
       style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
     >
       {TRIAGE_STATUSES.map((status) => {
@@ -72,8 +75,8 @@ export function StatusSwitch({
             onClick={() => onChange(status)}
             aria-pressed={selected}
             className={clsx(
-              "rounded-[7px] font-medium transition-colors duration-150",
-              size === "sm" ? "px-2 py-[3px] text-[10.5px]" : "px-2.5 py-1 text-[11.5px]",
+              "rounded-control font-medium transition-colors duration-150",
+              size === "sm" ? "px-2 py-[3px] t-label" : "px-2.5 py-1 t-body-sm",
             )}
             style={{
               color: selected ? color : "var(--text-faint)",

@@ -27,8 +27,7 @@ export const Sparkline = memo(function Sparkline({
       return { x, y };
     });
     const line = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
-    const area = `${line} L${WIDTH},${HEIGHT} L0,${HEIGHT} Z`;
-    return { points, line, area, last: points[points.length - 1]! };
+    return { points, line, last: points[points.length - 1]! };
   }, [signal]);
 
   if (!geometry) {
@@ -45,12 +44,11 @@ export const Sparkline = memo(function Sparkline({
 
   return (
     <svg width={WIDTH} height={HEIGHT} aria-hidden className="overflow-visible">
-      <path d={geometry.area} fill={tone} opacity={0.1} />
       <path
         d={geometry.line}
         fill="none"
         stroke={tone}
-        strokeWidth={1.3}
+        strokeWidth={1}
         strokeLinecap="round"
         strokeLinejoin="round"
       />

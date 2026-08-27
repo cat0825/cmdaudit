@@ -35,21 +35,28 @@ store.py / db.py ──→ out/commands.duckdb（commands 表，schema 见 docs/
 
 ## 前端结构（web/src）
 
-- 入口 `App.tsx`：hash 路由六视图 + 全局键盘（1–4 改状态、j/k 移动、⌘K 面板）。
-- 视图 `views/`：Overview（总览）/（失败模式）/ Board（四列看板，无拖拽）/ Track（耗时线）/ Queue（验证队列）/（证据与口径）。
+- 入口 `App.tsx`：hash 路由八视图 + 全局键盘（1–4 改状态、j/k 移动、⌘K 面板）。
+- 视图 `views/`：Overview（总览）/ Queue（失败模式）/ Board（四列看板，无拖拽）/
+  Loops（重试循环）/ Groups（命令构成）/ Track（`duration` 耗时线与 `evidence`
+  证据口径两个路由共用此文件）/ Candidates（验证队列）。路由清单以
+  `web/src/lib/views.ts` 为准。
 - 组件 `components/`：Rail 侧栏、Topbar、CommandPalette、DetailDrawer、FindingRow、CommandBlock、StatusPill、primitives。
 - 图表 `charts/`：DurationHistogram / Heatmap / Sparkline / TrendChart（Recharts）。
 - 状态 `lib/`：`payload.ts`（TS 契约 ↔ `viz/model.py`）、`load.ts`（注入读取+降级）、
+  `sanitize.ts`（运行时 shape 校验 + 深层补全，降级原因回传页面）、
   `triage.ts`（localStorage 本机处理状态）、`theme.ts`（三态主题）、`format/views/motion`。
-- 设计 token 全在 `styles.css` `@theme`：单 accent（electric blue）+ 语义色只表状态；
-  Geist/Geist Mono 内联 woff2；oklch 双主题；`prefers-reduced-motion` 尊重。
+- 设计 token 全在 `styles.css`：语义色分两档 —— 文字档 `--text-*`（分主题派生，
+  目标 4.5）与图形档 `--color-*`（主题无关，只做边框/tint 底/图表笔画）。
+  单 accent（electric blue）只作交互色，不进图表数据笔画；Geist/Geist Mono
+  内联 woff2；oklch 双主题；`prefers-reduced-motion` 尊重。视觉契约见 DESIGN.md。
 
 ## 高风险区（改动需升级验证）
 
 - `extract/status.py`、`extract/duration.py` —— 口径语义，历史上多次量级级修正。
 - `screen/contract.py` —— 证据分级的最后防线。
 - `viz/serialize.py` —— 注入安全唯一出口。
-- `web/src/lib/load.ts` —— payload 信任边界（当前无运行时 shape 校验，见 docs/reviews/2026-08-26-frontend-audit.md F-01）。
+- `web/src/lib/load.ts` + `sanitize.ts` —— payload 信任边界。运行时 shape 校验已落地
+  （whitelist 收敛 + 降级告警），新增 payload 字段必须同时改 `sanitize.ts`，否则静默丢数据。
 
 ## 外部依赖
 

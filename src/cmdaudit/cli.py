@@ -13,6 +13,7 @@ import webbrowser
 from pathlib import Path
 
 from cmdaudit.db import open_commands_db
+from cmdaudit.extract.duration import YIELD_CEILING_S, TruncationPolicy
 from cmdaudit.pipeline import ExtractStats, build_records
 from cmdaudit.report.build import build_tables, collect_coverage
 from cmdaudit.report.render import render_json, render_markdown
@@ -43,12 +44,19 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         print(f"错误：{exc}", file=sys.stderr)
         return 2
 
+    # issue #30：让出上限是采集环境的属性，随产物记录，不当跨环境常量。
+    # 传 0（或负值）表示关掉纯耗时兜底，只认 still-running 这类直接证据。
+    ceiling = args.yield_ceiling if args.yield_ceiling > 0 else None
+    truncation = TruncationPolicy(yield_ceiling_s=ceiling)
+
     started = time.monotonic()
     stats = ExtractStats()
     try:
         bash_total = count_bash_calls(conn)
         calls = iter_raw_calls(conn, limit=args.limit)
-        written = write_commands(db_out, build_records(calls, stats=stats))
+        written = write_commands(
+            db_out, build_records(calls, stats=stats, truncation=truncation)
+        )
     finally:
         conn.close()
 
@@ -59,6 +67,7 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         "commands_written": written,
         "elapsed_s": round(elapsed, 2),
         **stats.as_dict(),
+        **truncation.as_dict(),
     }
     write_stats(db_out, {k: v for k, v in payload.items() if isinstance(v, int)})
     (out_dir / "extract-stats.json").write_text(
@@ -175,6 +184,16 @@ def build_parser() -> argparse.ArgumentParser:
     extract = sub.add_parser("extract", help="从 agentsview 会话库抽取命令（只读）")
     extract.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="agentsview sessions.db")
     extract.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help="输出目录")
+    extract.add_argument(
+        "--yield-ceiling",
+        type=float,
+        default=YIELD_CEILING_S,
+        help=(
+            f"工具让出上限（秒），默认 {YIELD_CEILING_S}（本机 Codex）。"
+            "换 agent 或改了 yield_time_ms 时要跟着改；传 0 表示只认直接证据、"
+            "不用纯耗时兜底"
+        ),
+    )
     extract.add_argument(
         "--limit", type=int, default=None, help="只处理前 N 个 tool_call（调试用）"
     )

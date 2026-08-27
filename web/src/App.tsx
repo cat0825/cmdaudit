@@ -10,6 +10,8 @@ import { OverviewView } from "./views/OverviewView";
 import { QueueView } from "./views/QueueView";
 import { BoardView } from "./views/BoardView";
 import { DurationView, EvidenceView } from "./views/TrackView";
+import { LoopsView } from "./views/LoopsView";
+import { GroupsView } from "./views/GroupsView";
 import { CandidatesView } from "./views/CandidatesView";
 import { isViewId, VIEWS, type ViewId } from "./lib/views";
 import { useTheme } from "./lib/theme";
@@ -143,6 +145,9 @@ export function App({
   const counts: Partial<Record<ViewId, number>> = {
     queue: openCount,
     board: payload.findings.length,
+    // 用未截断总数：rail 上的角标是规模指示，不是列表长度。
+    loops: payload.retry_loops_total,
+    groups: payload.group_profiles.length,
     candidates: payload.candidates.length,
   };
 
@@ -183,10 +188,10 @@ export function App({
               type="button"
               onClick={() => setView(item.id)}
               aria-current={view === item.id ? "page" : undefined}
-              className="shrink-0 rounded-lg border px-2.5 py-1 text-[11.5px]"
+              className="shrink-0 rounded-control border px-2.5 py-1 t-body-sm"
               style={{
                 borderColor: view === item.id ? "color-mix(in oklab, var(--color-accent-400) 42%, transparent)" : "var(--border)",
-                color: view === item.id ? "var(--color-accent-500)" : "var(--text-muted)",
+                color: view === item.id ? "var(--text-accent)" : "var(--text-muted)",
                 background: view === item.id ? "color-mix(in oklab, var(--color-accent-400) 10%, transparent)" : "transparent",
               }}
             >
@@ -205,12 +210,12 @@ export function App({
               background: "color-mix(in oklab, var(--color-warn-400) 10%, transparent)",
             }}
           >
-            <p className="text-[11.5px] font-semibold" style={{ color: "var(--text-warn)" }}>
+            <p className="t-body-sm font-medium" style={{ color: "var(--text-warn)" }}>
               payload 契约不符，部分内容已降级渲染
             </p>
             <ul className="mt-1 grid gap-0.5">
               {loadWarnings.map((warning) => (
-                <li key={warning} className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                <li key={warning} className="t-label" style={{ color: "var(--text-muted)" }}>
                   {warning}
                 </li>
               ))}
@@ -218,7 +223,7 @@ export function App({
           </div>
         ) : null}
 
-        <main className="px-4 pb-16 pt-4 sm:px-6">
+        <main className="px-4 pb-10 pt-4 sm:px-6">
           <AnimatePresence mode="wait">
             <motion.div key={view} variants={VIEW_FADE} initial="hidden" animate="visible" exit="exit">
               {view === "overview" ? (
@@ -243,6 +248,8 @@ export function App({
                   onSetStatus={(id, status) => patch([id], { status })}
                 />
               ) : null}
+              {view === "loops" ? <LoopsView payload={payload} /> : null}
+              {view === "groups" ? <GroupsView payload={payload} /> : null}
               {view === "duration" ? <DurationView payload={payload} /> : null}
               {view === "candidates" ? <CandidatesView payload={payload} /> : null}
               {view === "evidence" ? <EvidenceView payload={payload} /> : null}

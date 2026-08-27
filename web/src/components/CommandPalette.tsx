@@ -119,7 +119,9 @@ export function CommandPalette({
         <motion.div
           key="palette-scrim"
           className="fixed inset-0 z-50 grid place-items-start justify-center pt-[12vh]"
-          style={{ background: "oklch(0.15 0.01 265 / 0.4)", backdropFilter: "blur(4px)" }}
+          /* 遮罩走 token；blur 被 DESIGN.md 明令禁止（不要 glow / blur / 渐变），
+             层次靠 --scrim-strong 的不透明度和面板自身的 1px 描边建立。 */
+          style={{ background: "var(--scrim-strong)" }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -130,7 +132,7 @@ export function CommandPalette({
             role="dialog"
             aria-modal="true"
             aria-label="命令面板"
-            className="w-[min(620px,calc(100vw-32px))] overflow-hidden rounded-xl border"
+            className="w-[min(620px,calc(100vw-32px))] overflow-hidden rounded-panel border"
             style={{ background: "var(--bg-elevated)", borderColor: "var(--border-strong)", boxShadow: "var(--shadow-pop)" }}
             initial={{ opacity: 0, scale: 0.97, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -158,12 +160,12 @@ export function CommandPalette({
                 }
               }}
               placeholder="搜索命令模板、失败类型，或跳转视图…"
-              className="w-full border-b bg-transparent px-4 py-3.5 text-[13.5px] outline-none"
+              className="w-full border-b bg-transparent px-4 py-3.5 t-title outline-none"
               style={{ borderColor: "var(--border)", color: "var(--text)" }}
             />
             <ul ref={listRef} className="max-h-[52vh] overflow-y-auto p-1.5">
               {results.length === 0 ? (
-                <li className="px-3 py-6 text-center text-[12px]" style={{ color: "var(--text-faint)" }}>
+                <li className="px-3 py-6 text-center t-body" style={{ color: "var(--text-faint)" }}>
                   没有匹配项
                 </li>
               ) : (
@@ -173,18 +175,18 @@ export function CommandPalette({
                       type="button"
                       onClick={() => commit(action)}
                       onMouseEnter={() => setCursor(index)}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors"
+                      className="flex w-full items-center gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors"
                       style={{ background: index === cursor ? "var(--bg-inset)" : "transparent" }}
                     >
                       <span
-                        className="w-[52px] shrink-0 text-[9.5px] uppercase tracking-wide"
+                        className="w-[52px] shrink-0 t-eyebrow-cjk"
                         style={{ color: "var(--text-faint)" }}
                       >
                         {action.group}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="clip block font-mono text-[12px]">{action.label}</span>
-                        <span className="clip block text-[10.5px]" style={{ color: "var(--text-faint)" }}>
+                        <span className="clip block font-mono t-mono">{action.label}</span>
+                        <span className="clip block t-label" style={{ color: "var(--text-faint)" }}>
                           {action.hint}
                         </span>
                       </span>
@@ -199,7 +201,7 @@ export function CommandPalette({
               )}
             </ul>
             <footer
-              className="flex items-center gap-3 border-t px-3.5 py-2 text-[10px]"
+              className="flex items-center gap-3 border-t px-3.5 py-2 t-eyebrow-cjk"
               style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
             >
               <span className="flex items-center gap-1">

@@ -170,6 +170,55 @@ class Finding:
 
 
 @dataclass(frozen=True, slots=True)
+class RetryLoop:
+    """同一会话内被反复重跑的同一模板 —— agent 卡在循环里的客观痕迹。
+
+    这是 `session_id` 维度的第一个用法：其余视图都按 template / agent 聚合，
+    因此「一次会话里重来了 165 遍」这种事实在别处看不见。
+
+    **不判定「该不该重试」**。重试本身可能完全合理（轮询等待、逐段读文件）。
+    这里只给出可核对的事实：重试次数、其中失败几次、累计耗时。
+    `wasted_s` 只累加可信耗时（`DURATION_GUARD` 口径），所以它是**下界**，
+    命名为 wasted 是因为它衡量「花在同一件事上的时间」，不含价值判断。
+    """
+
+    loop_id: str
+    session_id: str
+    agent: str
+    project: str
+    template: str
+    template_id: str
+    tries: int
+    failures: int
+    wasted_s: float
+    first_seen: str | None
+    last_seen: str | None
+    samples: tuple[Sample, ...]
+    drill_sql: str
+
+
+@dataclass(frozen=True, slots=True)
+class GroupProfile:
+    """一个 command_group 的规模与风险。
+
+    存在意义是回答「失败集中在哪类动作上」：本机数据里 build 的失败率
+    （23.9%）是 search_read（2.4%）的十倍，但两者在按 template 排的队列里
+    会被体量差异淹没 —— search_read 有 14732 条，build 只有 243 条。
+
+    `failure_pct` 由构造侧算好（渲染层不做数值运算，与 Row.bar_ratio 同约定）。
+    `duration_s` 走 DURATION_GUARD 口径，与耗时线同源，是下界。
+    """
+
+    group: str
+    runs: int
+    failures: int
+    failure_pct: float
+    duration_s: float
+    top_programs: tuple[tuple[str, int], ...]
+    drill_sql: str
+
+
+@dataclass(frozen=True, slots=True)
 class Dashboard:
     """工作台概览所需的轻量聚合，独立于报告表的下钻结构。"""
 
@@ -196,6 +245,10 @@ class Payload:
     #: 页面 KPI 必须用这个总数而不是 `len(findings)`，否则会静默少报。
     findings_total: int = 0
     findings: tuple[Finding, ...] = ()
+    #: 同 findings 的处理：被 MAX_RETRY_LOOPS 截断时页面 KPI 用这个总数。
+    retry_loops_total: int = 0
+    retry_loops: tuple[RetryLoop, ...] = ()
+    group_profiles: tuple[GroupProfile, ...] = ()
     candidates: tuple[Candidate, ...] = ()
     candidate_note: str = ""
     warnings: tuple[str, ...] = field(default_factory=tuple)

@@ -31,14 +31,14 @@ function BinTooltip({ active, payload }: { active?: boolean; payload?: { payload
   if (!datum) return null;
   return (
     <div
-      className="pointer-events-none rounded-lg border px-2.5 py-1.5 text-[11px]"
+      className="pointer-events-none rounded-control border px-2.5 py-1.5 t-label"
       style={{
         background: "var(--bg-elevated)",
         borderColor: "var(--border-strong)",
         boxShadow: "var(--shadow-pop)",
       }}
     >
-      <p className="font-mono text-[10.5px]" style={{ color: "var(--text-faint)" }}>
+      <p className="font-mono t-label" style={{ color: "var(--text-faint)" }}>
         {datum.label}
       </p>
       <p className="num mt-0.5">
@@ -92,18 +92,14 @@ export const DurationHistogram = memo(function DurationHistogram({
               {data.map((datum) => (
                 <Cell
                   key={datum.label}
-                  fill={
-                    datum.hot
-                      ? "var(--color-warn-400)"
-                      : "color-mix(in oklab, var(--color-accent-400) 62%, transparent)"
-                  }
+                  fill={datum.hot ? "var(--signal-live)" : "var(--chart-neutral)"}
                 />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <dl className="mt-2 grid grid-cols-4 gap-px overflow-hidden rounded-lg" style={{ background: "var(--border)" }}>
+      <dl className="mt-2 grid grid-cols-4 gap-px overflow-hidden rounded-card" style={{ background: "var(--border)" }}>
         {(
           [
             ["p50", profile.p50],
@@ -113,10 +109,10 @@ export const DurationHistogram = memo(function DurationHistogram({
           ] as const
         ).map(([label, value]) => (
           <div key={label} className="px-2.5 py-2" style={{ background: "var(--bg-elevated)" }}>
-            <dt className="font-mono text-[9.5px] uppercase" style={{ color: "var(--text-faint)" }}>
+            <dt className="t-eyebrow" style={{ color: "var(--text-faint)" }}>
               {label}
             </dt>
-            <dd className="num mt-0.5 text-[13px] font-semibold">{formatSeconds(value)}</dd>
+            <dd className="num mt-0.5 t-body font-medium">{formatSeconds(value)}</dd>
           </div>
         ))}
       </dl>
