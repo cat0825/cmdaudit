@@ -66,8 +66,8 @@ export function FindingRow({
             onToggleCheck();
           }}
           aria-label={checked ? "取消选中" : "选中"}
-          className="grid h-5 w-5 place-items-center rounded transition-colors"
-          style={{ color: checked ? "var(--color-accent-500)" : "var(--text-faint)" }}
+          className="grid h-5 w-5 place-items-center rounded-control transition-colors"
+          style={{ color: checked ? "var(--text-accent)" : "var(--text-faint)" }}
         >
           {checked ? <CheckSquareIcon size={15} weight="fill" /> : <SquareIcon size={15} />}
         </button>
@@ -78,14 +78,14 @@ export function FindingRow({
 
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <code className="clip flex-1 font-mono text-[12.5px]" title={finding.template}>
+            <code className="clip flex-1 font-mono t-body" title={finding.template}>
               {finding.template || finding.program || finding.template_id}
             </code>
             <Badge tone={kindTone} mono>
               {finding.failure_kind}
             </Badge>
           </div>
-          <p className="clip mt-1 text-[10.5px]" style={{ color: "var(--text-faint)" }}>
+          <p className="clip mt-1 t-label" style={{ color: "var(--text-faint)" }}>
             {finding.agents.join(" · ") || "—"}
             <span className="mx-1.5">/</span>
             {finding.projects.length > 2
@@ -96,14 +96,14 @@ export function FindingRow({
             {entry.owner ? (
               <>
                 <span className="mx-1.5">/</span>
-                <span style={{ color: "var(--color-accent-500)" }}>@{entry.owner}</span>
+                <span style={{ color: "var(--text-accent)" }}>@{entry.owner}</span>
               </>
             ) : null}
           </p>
         </div>
 
         <div className="hidden md:block">
-          <p className="num text-right text-[12.5px] font-semibold" style={{ color: "var(--color-danger-500)" }}>
+          <p className="num text-right t-body font-medium" style={{ color: "var(--text-danger)" }}>
             {formatCount(finding.failures)}
           </p>
           <div className="mt-1.5">
@@ -111,9 +111,9 @@ export function FindingRow({
           </div>
         </div>
 
-        <p className="num hidden text-right text-[11.5px] md:block" style={{ color: "var(--text-muted)" }}>
+        <p className="num hidden text-right t-body-sm md:block" style={{ color: "var(--text-muted)" }}>
           {formatPercent(finding.failures, finding.runs)}
-          <span className="ml-1 text-[9.5px]" style={{ color: "var(--text-faint)" }}>
+          <span className="ml-1 t-label" style={{ color: "var(--text-faint)" }}>
             /{formatCount(finding.runs)}
           </span>
         </p>
@@ -122,7 +122,7 @@ export function FindingRow({
           <Sparkline signal={finding.signal} />
         </div>
 
-        <p className="num text-right text-[12px] font-semibold md:hidden" style={{ color: "var(--color-danger-500)" }}>
+        <p className="num text-right t-mono font-medium md:hidden" style={{ color: "var(--text-danger)" }}>
           {formatCount(finding.failures)}
         </p>
       </div>

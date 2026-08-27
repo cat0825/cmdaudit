@@ -54,7 +54,7 @@ function RowItem({
           <CaretRightIcon size={11} style={{ color: "var(--text-faint)" }} />
         </motion.span>
         <span className="min-w-0">
-          <code className="clip block font-mono text-[12px]" title={cellText(row.cells[0] ?? null)}>
+          <code className="clip block font-mono t-mono" title={cellText(row.cells[0] ?? null)}>
             {cellText(row.cells[0] ?? null)}
           </code>
           {barIndex > 0 ? (
@@ -71,9 +71,11 @@ function RowItem({
             // 截断后靠 title 保留全文，展开行里也有完整样本。
             <span
               key={column}
-              className="num clip text-right text-[11.5px]"
+              className="num clip text-right t-body-sm"
               title={value}
-              style={{ color: index === barIndex - 1 ? `var(--color-${tone === "danger" ? "danger-500" : "accent-500"})` : "var(--text-muted)" }}
+              // 强调列是文字，走 --text-* 文字档。别拼 --color-*-500：那是笔画/边框档，
+              // 实测在暗色卡上只有 3.98、亮色白底 4.34，都不到 4.5。
+              style={{ color: index === barIndex - 1 ? `var(--text-${tone})` : "var(--text-muted)" }}
             >
               {value}
             </span>
@@ -92,7 +94,7 @@ function RowItem({
             {row.samples.map((sample, index) => (
               <li
                 key={`${sample.command}-${index}`}
-                className="rounded-lg border p-2.5"
+                className="rounded-card border p-2.5"
                 style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}
               >
                 <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -130,16 +132,16 @@ function TrackBlock({ track }: { track: Track }) {
     <div className="grid gap-3">
       <Card>
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[14px] font-semibold tracking-tight">{track.title}</h2>
+          <h2 className="t-title font-medium">{track.title}</h2>
           <Badge tone={tone} mono>
             口径 {track.scope_name}
           </Badge>
         </div>
-        <p className="mt-2 max-w-[80ch] text-[11.5px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+        <p className="mt-2 max-w-[80ch] t-body-sm" style={{ color: "var(--text-muted)" }}>
           {track.lead}
         </p>
         <p
-          className="mt-2 border-l-2 pl-2.5 text-[11px] leading-relaxed"
+          className="mt-2 border-l-2 pl-2.5 t-label"
           style={{ borderColor: `var(--color-${tone === "danger" ? "danger-500" : "accent-500"})`, color: "var(--text-muted)" }}
         >
           {track.caveat}
@@ -149,15 +151,15 @@ function TrackBlock({ track }: { track: Track }) {
       {track.sections.map((section) => (
         <Card key={section.key} padded={false}>
           <header className="border-b px-4 py-3" style={{ borderColor: "var(--border)" }}>
-            <h3 className="text-[12.5px] font-semibold">{section.title}</h3>
+            <h3 className="t-body font-medium">{section.title}</h3>
             {section.note ? (
-              <p className="mt-1 max-w-[86ch] text-[10.5px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              <p className="mt-1 max-w-[86ch] t-label" style={{ color: "var(--text-muted)" }}>
                 {section.note}
               </p>
             ) : null}
           </header>
           <div
-            className="grid items-center gap-3 border-b px-4 py-1.5 text-[9.5px] uppercase tracking-wide"
+            className="grid items-center gap-3 border-b px-4 py-1.5 t-eyebrow"
             style={{
               gridTemplateColumns: `18px minmax(0,1fr) repeat(${Math.max(0, section.columns.length - 1)}, minmax(60px, 96px))`,
               borderColor: "var(--border)",
@@ -197,9 +199,9 @@ export function DurationView({ payload }: { payload: Payload }) {
         <Card>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-[13px] font-semibold tracking-tight">耗时分布</h2>
-              <p className="mt-1 max-w-[76ch] text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                桶宽不等距，每桶等宽显示，x 轴标注真实区间。超过 p90 的桶用琥珀色标出 —— 那才是值得优化的部分。
+              <h2 className="t-title font-medium">耗时分布</h2>
+              <p className="mt-1 max-w-[76ch] t-label" style={{ color: "var(--text-muted)" }}>
+                桶宽不等距，每桶等宽显示，x 轴标注真实区间。超过 p90 的桶用信号色标出 —— 那才是值得优化的部分。
               </p>
             </div>
             <Badge tone="accent" mono>
@@ -221,20 +223,20 @@ export function EvidenceView({ payload }: { payload: Payload }) {
   return (
     <div className="grid gap-4">
       <Card>
-        <h2 className="text-[13px] font-semibold tracking-tight">覆盖度</h2>
-        <p className="mt-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+        <h2 className="t-title font-medium">覆盖度</h2>
+        <p className="mt-1 t-label" style={{ color: "var(--text-muted)" }}>
           每个排除项都能解释去向。分母不同的数字不可相加。
         </p>
         <dl
-          className="mt-3 grid gap-px overflow-hidden rounded-lg sm:grid-cols-2 lg:grid-cols-4"
+          className="mt-3 grid gap-px overflow-hidden rounded-card sm:grid-cols-2 lg:grid-cols-4"
           style={{ background: "var(--border)" }}
         >
           {Object.entries(payload.coverage).map(([label, value]) => (
             <div key={label} className="px-3 py-2.5" style={{ background: "var(--bg-elevated)" }}>
-              <dt className="text-[10.5px]" style={{ color: "var(--text-muted)" }}>
+              <dt className="t-label" style={{ color: "var(--text-muted)" }}>
                 {label}
               </dt>
-              <dd className="num mt-1 text-[13.5px] font-semibold">{cellText(value)}</dd>
+              <dd className="num mt-1 t-title font-medium">{cellText(value)}</dd>
             </div>
           ))}
         </dl>
@@ -242,11 +244,11 @@ export function EvidenceView({ payload }: { payload: Payload }) {
       {failureTrack ? <TrackBlock track={failureTrack} /> : null}
       {payload.warnings.length > 0 ? (
         <Card>
-          <h2 className="text-[13px] font-semibold tracking-tight">生成告警</h2>
+          <h2 className="t-title font-medium">生成告警</h2>
           <ul className="mt-2 grid gap-1.5">
             {payload.warnings.map((warning) => (
               // 同类告警文字：浅色主题下 --color-warn-400 只有 1.8:1，文字必须走 --text-warn
-              <li key={warning} className="text-[11.5px] leading-relaxed" style={{ color: "var(--text-warn)" }}>
+              <li key={warning} className="t-body-sm" style={{ color: "var(--text-warn)" }}>
                 {warning}
               </li>
             ))}

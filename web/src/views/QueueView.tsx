@@ -40,16 +40,16 @@ function Chip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors"
+      className="inline-flex items-center gap-1.5 rounded-control border px-2 py-1 t-label font-medium transition-colors"
       style={{
         borderColor: active ? "color-mix(in oklab, var(--color-accent-400) 42%, transparent)" : "var(--border)",
         background: active ? "color-mix(in oklab, var(--color-accent-400) 12%, transparent)" : "var(--bg-elevated)",
-        color: active ? "var(--color-accent-500)" : "var(--text-muted)",
+        color: active ? "var(--text-accent)" : "var(--text-muted)",
       }}
     >
       {children}
       {count !== undefined ? (
-        <span className="num text-[9.5px]" style={{ color: "var(--text-faint)" }}>
+        <span className="num t-tertiary" style={{ color: "var(--text-faint)" }}>
           {formatCount(count)}
         </span>
       ) : null}
@@ -220,7 +220,7 @@ export function QueueView({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索命令模板 / 程序 / 项目 / agent / 失败类型"
-              className="w-full rounded-lg border px-2.5 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--color-accent-400)]"
+              className="w-full rounded-control border px-2.5 py-1.5 t-mono outline-none transition-colors focus:border-[var(--color-accent-400)]"
               style={{ background: "var(--bg-inset)", borderColor: "var(--border)", color: "var(--text)" }}
             />
           </div>
@@ -239,10 +239,10 @@ export function QueueView({
                     }
                   }}
                   aria-pressed={active}
-                  className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] transition-colors"
+                  className="inline-flex items-center gap-1 rounded-control border px-2 py-1 t-label transition-colors"
                   style={{
                     borderColor: active ? "color-mix(in oklab, var(--color-accent-400) 42%, transparent)" : "var(--border)",
-                    color: active ? "var(--color-accent-500)" : "var(--text-muted)",
+                    color: active ? "var(--text-accent)" : "var(--text-muted)",
                     background: active ? "color-mix(in oklab, var(--color-accent-400) 10%, transparent)" : "var(--bg-elevated)",
                   }}
                 >
@@ -279,7 +279,7 @@ export function QueueView({
             <button
               type="button"
               onClick={clearFilters}
-              className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-[var(--bg-inset)]"
+              className="ml-auto inline-flex items-center gap-1 rounded-control px-2 py-1 t-label transition-colors hover:bg-[var(--bg-inset)]"
               style={{ color: "var(--text-muted)" }}
             >
               <XIcon size={11} />
@@ -295,10 +295,10 @@ export function QueueView({
           animate={{ opacity: 1, y: 0 }}
           className="surface flex flex-wrap items-center gap-3 !p-2.5"
         >
-          <span className="num text-[11.5px] font-medium">
+          <span className="num t-body-sm font-medium">
             已选 {checkedIds.length} 条
             {hiddenCheckedCount > 0 ? (
-              <span className="ml-1.5 font-normal" style={{ color: "var(--text-warn)" }}>
+              <span className="ml-1.5" style={{ color: "var(--text-warn)" }}>
                 含当前筛选外 {hiddenCheckedCount} 条
               </span>
             ) : null}
@@ -314,7 +314,7 @@ export function QueueView({
           <button
             type="button"
             onClick={() => setChecked(new Set())}
-            className="ml-auto text-[11px]"
+            className="ml-auto t-label"
             style={{ color: "var(--text-muted)" }}
           >
             取消选择
@@ -324,7 +324,7 @@ export function QueueView({
 
       <Card padded={false}>
         <div
-          className="grid grid-cols-[22px_18px_minmax(0,1fr)_auto] items-center gap-x-3 border-b px-3 py-2 text-[9.5px] uppercase tracking-wide md:grid-cols-[22px_18px_minmax(0,1fr)_96px_78px_128px]"
+          className="grid grid-cols-[22px_18px_minmax(0,1fr)_auto] items-center gap-x-3 border-b px-3 py-2 t-eyebrow-cjk md:grid-cols-[22px_18px_minmax(0,1fr)_96px_78px_128px]"
           style={{ borderColor: "var(--border)", color: "var(--text-faint)", background: "var(--bg-inset)" }}
         >
           <span />
@@ -375,7 +375,7 @@ export function QueueView({
         </div>
 
         <footer
-          className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2 text-[10.5px]"
+          className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2 t-label"
           style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
         >
           <span className="num">

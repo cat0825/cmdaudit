@@ -98,7 +98,7 @@ export function OverviewView({
       label: "判定为失败",
       value: formatCount(failed),
       foot: `全历史 · 占已判定 ${formatPercent(failed, failed + coverageNumber(coverage, COVERAGE_KEY.succeeded))}`,
-      accent: "var(--color-danger-500)",
+      accent: "var(--text-danger)",
     },
     {
       label: "复发失败模式",
@@ -107,13 +107,13 @@ export function OverviewView({
         payload.findings_total > findings.length
           ? `共 ${formatCount(payload.findings_total)} 条，仅展示前 ${formatCount(findings.length)} 条（省略 ${formatCount(payload.findings_total - findings.length)} 条）`
           : "同一命令模板 × 失败类型 ≥2 次",
-      accent: "var(--color-warn-400)",
+      accent: "var(--text-warn)",
     },
     {
       label: "可信耗时合计",
       value: formatHours(coverageNumber(coverage, COVERAGE_KEY.durationTotalSeconds)),
       foot: `样本 ${formatCount(coverageNumber(coverage, COVERAGE_KEY.durationSamples))} 条（exact 口径）`,
-      accent: "var(--color-accent-500)",
+      accent: "var(--signal-live)",
     },
   ];
 
@@ -127,16 +127,16 @@ export function OverviewView({
       >
         {metrics.map((metric) => (
           <motion.div key={metric.label} variants={LIST_ITEM} className="surface p-4">
-            <dt className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <dt className="t-label" style={{ color: "var(--text-muted)" }}>
               {metric.label}
             </dt>
             <dd
-              className="num mt-1.5 text-[24px] font-semibold leading-none"
+              className="num mt-1.5 t-metric"
               style={{ color: metric.accent }}
             >
               {metric.value}
             </dd>
-            <p className="mt-2 text-[10.5px] leading-relaxed" style={{ color: "var(--text-faint)" }}>
+            <p className="mt-2 t-label" style={{ color: "var(--text-faint)" }}>
               {metric.foot}
             </p>
           </motion.div>
@@ -153,7 +153,7 @@ export function OverviewView({
             }
             action={
               <div
-                className="inline-flex items-center gap-px rounded-lg border p-px"
+                className="inline-flex items-center gap-px rounded-control border p-px"
                 style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
               >
                 {RANGES.map((item) => (
@@ -162,9 +162,9 @@ export function OverviewView({
                     type="button"
                     onClick={() => setRange(item.id)}
                     aria-pressed={range === item.id}
-                    className="rounded-[7px] px-2 py-[3px] text-[10.5px] font-medium transition-colors"
+                    className="rounded-control px-2 py-[3px] t-label font-medium transition-colors"
                     style={{
-                      color: range === item.id ? "var(--color-accent-500)" : "var(--text-faint)",
+                      color: range === item.id ? "var(--text-accent)" : "var(--text-faint)",
                       background: range === item.id ? "var(--bg-elevated)" : "transparent",
                       boxShadow: range === item.id ? "var(--shadow-card)" : "none",
                     }}
@@ -178,14 +178,14 @@ export function OverviewView({
           <div className="mt-3">
             {points.length > 0 ? <TrendChart points={points} /> : <Empty title="时间线为空" hint="commands 表里没有可解析的 started_at。" />}
           </div>
-          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[10.5px]" style={{ color: "var(--text-muted)" }}>
+          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 t-label" style={{ color: "var(--text-muted)" }}>
             <div className="flex gap-1.5">
               <dt>窗口执行</dt>
               <dd className="num" style={{ color: "var(--text)" }}>{formatCount(windowStats.runs)}</dd>
             </div>
             <div className="flex gap-1.5">
               <dt>窗口失败</dt>
-              <dd className="num" style={{ color: "var(--color-danger-500)" }}>{formatCount(windowStats.failures)}</dd>
+              <dd className="num" style={{ color: "var(--text-danger)" }}>{formatCount(windowStats.failures)}</dd>
             </div>
             <div className="flex gap-1.5">
               <dt>窗口失败率</dt>
@@ -207,13 +207,13 @@ export function OverviewView({
           <ul className="mt-3.5 grid gap-2.5">
             {dashboard.failures_by_kind.map(([kind, count]) => (
               <li key={kind} className="grid grid-cols-[76px_1fr_58px] items-center gap-2.5">
-                <code className="clip font-mono text-[11px]" title={kind}>
+                <code className="clip font-mono t-label" title={kind}>
                   {kind}
                 </code>
                 <Meter ratio={count / maxKind} />
-                <span className="num text-right text-[11px]">
+                <span className="num text-right t-label">
                   {formatCount(count)}
-                  <span className="ml-1 text-[9.5px]" style={{ color: "var(--text-faint)" }}>
+                  <span className="ml-1 t-tertiary" style={{ color: "var(--text-faint)" }}>
                     {formatPercent(count, failed)}
                   </span>
                 </span>
@@ -245,16 +245,16 @@ export function OverviewView({
       <Card padded={false}>
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4" style={{ borderColor: "var(--border)" }}>
           <div>
-            <h2 className="text-[13px] font-semibold tracking-tight">复发最多的失败模式</h2>
-            <p className="mt-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <h2 className="t-title font-medium">复发最多的失败模式</h2>
+            <p className="mt-1 t-label" style={{ color: "var(--text-muted)" }}>
               template_id × failure_kind，按失败次数排序
             </p>
           </div>
           <button
             type="button"
             onClick={() => onNavigate("queue")}
-            className="flex items-center gap-1 text-[11.5px] transition-opacity hover:opacity-70"
-            style={{ color: "var(--color-accent-500)" }}
+            className="flex items-center gap-1 t-body-sm transition-opacity hover:opacity-70"
+            style={{ color: "var(--text-accent)" }}
           >
             打开队列
             <ArrowRightIcon size={12} />
@@ -271,7 +271,7 @@ export function OverviewView({
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <code className="clip font-mono text-[12px]">{finding.template}</code>
+                    <code className="clip font-mono t-mono">{finding.template}</code>
                     <Badge tone="danger" mono>
                       {finding.failure_kind}
                     </Badge>
@@ -280,7 +280,7 @@ export function OverviewView({
                     <Meter ratio={finding.failures / maxFailures} />
                   </div>
                 </div>
-                <span className="num text-right text-[12.5px] font-semibold" style={{ color: "var(--color-danger-500)" }}>
+                <span className="num text-right t-body font-medium" style={{ color: "var(--text-danger)" }}>
                   {formatCount(finding.failures)}
                 </span>
               </button>

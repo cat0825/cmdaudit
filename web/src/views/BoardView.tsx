@@ -15,10 +15,10 @@ import { LIST_CONTAINER, LIST_ITEM } from "../lib/motion";
 
 const TONE_COLOR: Record<string, string> = {
   neutral: "var(--text-faint)",
-  accent: "var(--color-accent-500)",
-  danger: "var(--color-danger-500)",
-  warn: "var(--color-warn-400)",
-  ok: "var(--color-ok-400)",
+  accent: "var(--text-accent)",
+  danger: "var(--text-danger)",
+  warn: "var(--text-warn)",
+  ok: "var(--text-ok)",
 };
 
 export function BoardView({
@@ -63,8 +63,8 @@ export function BoardView({
               style={{ borderColor: "var(--border)" }}
             >
               <StatusDot status={status} />
-              <h2 className="text-[12px] font-semibold">{STATUS_LABEL[status]}</h2>
-              <span className="num ml-auto text-[11px]" style={{ color: "var(--text-faint)" }}>
+              <h2 className="t-body font-medium">{STATUS_LABEL[status]}</h2>
+              <span className="num ml-auto t-label" style={{ color: "var(--text-faint)" }}>
                 {formatCount(items.length)}
               </span>
             </header>
@@ -97,29 +97,29 @@ export function BoardView({
                         onSetStatus(finding.finding_id, TRIAGE_STATUSES[slot - 1]!);
                       }
                     }}
-                    className="cursor-pointer rounded-lg border p-2.5 transition-shadow hover:shadow-[var(--shadow-card)]"
+                    className="cursor-pointer rounded-card border p-2.5 transition-shadow hover:shadow-[var(--shadow-card)]"
                     style={{
                       background: "var(--bg-elevated)",
                       borderColor: "var(--border)",
                       borderLeft: `2px solid ${color}`,
                     }}
                   >
-                    <code className="clip block font-mono text-[11.5px]" title={finding.template}>
+                    <code className="clip block font-mono t-body-sm" title={finding.template}>
                       {finding.template}
                     </code>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <Badge tone="danger" mono>
                         {finding.failure_kind}
                       </Badge>
-                      <span className="num text-[11px] font-semibold" style={{ color: "var(--color-danger-500)" }}>
+                      <span className="num t-label font-medium" style={{ color: "var(--text-danger)" }}>
                         {formatCount(finding.failures)}
-                        <span className="ml-1 text-[9.5px] font-normal" style={{ color: "var(--text-faint)" }}>
+                        <span className="ml-1 t-label" style={{ color: "var(--text-faint)" }}>
                           {formatPercent(finding.failures, finding.runs)}
                         </span>
                       </span>
                     </div>
                     <div className="mt-1.5 flex items-center justify-between gap-2">
-                      <span className="clip text-[10px]" style={{ color: "var(--text-faint)" }}>
+                      <span className="clip t-eyebrow-cjk" style={{ color: "var(--text-faint)" }}>
                         {finding.agents.join(" · ")}
                       </span>
                       <Sparkline signal={finding.signal} />

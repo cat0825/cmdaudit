@@ -34,30 +34,32 @@ export function Topbar({
       className="sticky top-0 z-20 flex h-[60px] items-center justify-between gap-4 border-b px-6"
       style={{
         borderColor: "var(--border)",
-        background: "color-mix(in oklab, var(--bg) 88%, transparent)",
-        backdropFilter: "blur(10px)",
+        /* 不透明。原来是 88% 半透明 + blur(10px)：DESIGN.md 明令「不要 blur」，
+           而且滚动时内容会透上来，标题栏文字的对比度就不再是可保证的定值。
+           分层靠下边框那 1px --border，不靠玻璃感。 */
+        background: "var(--bg)",
       }}
     >
       <div className="min-w-0">
-        <h1 className="truncate text-[14px] font-semibold tracking-tight">{meta?.label ?? "总览"}</h1>
-        <p className="clip text-[11px]" style={{ color: "var(--text-muted)" }}>
+        <h1 className="truncate t-title font-medium">{meta?.label ?? "总览"}</h1>
+        <p className="clip t-label" style={{ color: "var(--text-muted)" }}>
           {meta?.hint}
         </p>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
         <div className="hidden text-right md:block">
-          <p className="font-mono text-[9.5px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+          <p className="t-eyebrow-cjk" style={{ color: "var(--text-faint)" }}>
             最新事件
           </p>
-          <p className="num text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <p className="num t-label" style={{ color: "var(--text-muted)" }}>
             {latestEventAt ? latestEventAt.slice(0, 16).replace("T", " ") : "—"}
           </p>
         </div>
 
         <span className="hidden h-6 w-px lg:block" style={{ background: "var(--border)" }} />
 
-        <p className="num hidden text-[10.5px] lg:block" style={{ color: "var(--text-faint)" }}>
+        <p className="num hidden t-label lg:block" style={{ color: "var(--text-faint)" }}>
           生成于 {generatedAt}
         </p>
 
@@ -69,7 +71,7 @@ export function Topbar({
           }}
           title={`主题：${THEME_LABEL[themeChoice]}（点击切换）`}
           aria-label={`主题：${THEME_LABEL[themeChoice]}`}
-          className="grid h-[30px] w-[30px] place-items-center rounded-lg border transition-colors hover:bg-[var(--bg-inset)]"
+          className="grid h-[30px] w-[30px] place-items-center rounded-control border transition-colors hover:bg-[var(--bg-inset)]"
           style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
         >
           <ThemeIcon size={15} />
@@ -78,7 +80,7 @@ export function Topbar({
         <button
           type="button"
           onClick={onOpenPalette}
-          className="flex h-[30px] items-center gap-2 rounded-lg border pl-2.5 pr-2 text-[11.5px] transition-colors hover:bg-[var(--bg-inset)]"
+          className="flex h-[30px] items-center gap-2 rounded-control border pl-2.5 pr-2 t-body-sm transition-colors hover:bg-[var(--bg-inset)]"
           style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
         >
           <MagnifyingGlassIcon size={13} />

@@ -85,13 +85,13 @@ export function CommandBlock({
   return (
     <div className="group/cmd relative">
       {label ? (
-        <p className="mb-1 font-mono text-[9.5px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+        <p className="mb-1 t-eyebrow-cjk" style={{ color: "var(--text-faint)" }}>
           {label}
         </p>
       ) : null}
       <pre
         ref={preRef}
-        className="overflow-x-auto rounded-lg border px-2.5 py-2 pr-9 font-mono text-[11.5px] leading-relaxed"
+        className="overflow-x-auto rounded-control border px-2.5 py-2 pr-9 font-mono t-mono"
         style={{
           background: "var(--bg-inset)",
           borderColor: "var(--border)",
@@ -106,7 +106,7 @@ export function CommandBlock({
         onClick={copy}
         aria-label={hint}
         title={hint}
-        className="absolute right-1.5 grid h-6 w-6 place-items-center rounded-md border transition-opacity focus-visible:opacity-100 group-hover/cmd:opacity-100"
+        className="absolute right-1.5 grid h-6 w-6 place-items-center rounded-control border transition-opacity focus-visible:opacity-100 group-hover/cmd:opacity-100"
         style={{
           top: label ? 22 : 6,
           background: "var(--bg-elevated)",
@@ -114,9 +114,9 @@ export function CommandBlock({
             state === "failed" ? "color-mix(in oklab, var(--color-warn-400) 55%, transparent)" : "var(--border)",
           color:
             state === "copied"
-              ? "var(--color-ok-400)"
+              ? "var(--text-ok)"
               : state === "failed"
-                ? "var(--color-warn-400)"
+                ? "var(--text-warn)"
                 : "var(--text-faint)",
           // 反馈态必须一直可见：hover 才显示的失败提示等于没有提示。
           opacity: state === "idle" ? 0 : 1,
@@ -131,7 +131,7 @@ export function CommandBlock({
         )}
       </button>
       {state === "failed" ? (
-        <p className="mt-1 text-[10px]" style={{ color: "var(--text-warn)" }} role="status">
+        <p className="mt-1 t-body-sm" style={{ color: "var(--text-warn)" }} role="status">
           浏览器拒绝了剪贴板写入。文本已选中，按 ⌘C / Ctrl+C 复制。
         </p>
       ) : null}
