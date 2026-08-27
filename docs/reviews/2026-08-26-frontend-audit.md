@@ -1,3 +1,18 @@
+> **后续修正（2026-08-27）**：本文两处结论已被更严格的复测推翻，正文保留原样
+> 作为当时的记录，不要据此判断当前状态。
+>
+> 1. **「双主题对比度全部达标 / WCAG AA 违规 = 0」是假结论**（见下方总体结论与
+>    「达标项」）。当时的采样脚本用正则解析 `getComputedStyle().color`，而 Chrome
+>    原样返回 `oklch(…)` 字符串 —— 亮色主题被整体算成同一个错误比值。改用 canvas
+>    读回真实 sRGB 像素后实测到多处真实违规，最低 1.82（`--color-warn-400` 作亮色
+>    文字）。修法是把语义色拆成文字档 `--text-*` 与图形档 `--color-*` 两档，
+>    详见 `DESIGN.md`「语义色的两档分工」与该文「验收」章节列出的四个采样陷阱。
+> 2. **F-01「零运行时校验」已修**：`web/src/lib/sanitize.ts` 落地了 whitelist 收敛
+>    与降级告警，`load.ts` 的两个出口都过它。
+>
+> 另外本文按「六视图」描述前端，现为八视图（新增 `loops` / `groups`），
+> 路由清单以 `web/src/lib/views.ts` 为准。
+
 # 前端审查 · 2026-08-26
 
 **范围**：`web/src`（React 19 + TS，~2,400 行）对照 `src/cmdaudit/viz/{model,serialize,collect,render_html}.py`，

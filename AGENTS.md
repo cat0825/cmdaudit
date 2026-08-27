@@ -50,8 +50,13 @@
 
 - `src/cmdaudit/viz/shell.html` 是**构建产物**，与 `web/dist/index.html` 逐字节一致，
   CI 有同步校验。改前端后跑 `scripts/sync-shell.sh`；合并冲突不要手工解，重建同步。
-- 数据契约双侧同步：`web/src/lib/payload.ts` ↔ `src/cmdaudit/viz/model.py`，
-  改一侧必须改另一侧。
+- 数据契约**三侧**同步：`src/cmdaudit/viz/model.py` ↔ `web/src/lib/payload.ts`
+  ↔ `web/src/lib/sanitize.ts`。前两者管类型，第三者是 whitelist 运行时校验 ——
+  漏改 `sanitize.ts` 不会报错，字段会被**静默丢弃**。
+- 视觉契约见 `DESIGN.md`：字重只 400/500、行高 ≤1.5、禁裸 Tailwind 圆角类、
+  组件禁写死色值。语义色分两档：文字用 `--text-*`（4.5），
+  边框/tint 底/图表笔画用 `--color-*`（3:1）。改色值必须实测，方法与四个
+  采样陷阱写在 DESIGN.md「验收」。
 - 产物必须 `file://` 双击可用：无 CDN、无外部字体、无埋点、无服务端。
 - payload 唯一注入点是 `render_html.py` 的单次占位符替换，外部数据只走
   `serialize.payload_to_json`（已中和 `</script>`），不得新开文本出口。
@@ -66,4 +71,6 @@
 
 - 12 条 issue 修复分支在 `~/Documents/ChatGPT/cmdaudit` 本地未推送（入口顺序见该目录 HANDOFF 体系）。
 - open issue 18 个，P0/P1 集中在口径对齐（#6/#11/#12/#13/#17）与前端形态（#7/#44/#49）。
-- 2026-08-26 前端审查发现的问题清单：`docs/reviews/2026-08-26-frontend-audit.md`。
+- 2026-08-26 前端审查问题清单：`docs/reviews/2026-08-26-frontend-audit.md`。
+  该文顶部有 2026-08-27 修正说明：其「对比度全部达标」是采样脚本缺陷导致的假结论，
+  F-01（零运行时校验）已修。引用前先看修正。
