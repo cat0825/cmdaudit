@@ -23,9 +23,11 @@ from cmdaudit.viz.model import (
     DurationProfile,
     Finding,
     FindingSignal,
+    GroupProfile,
     HeatCell,
     HistogramBin,
     Payload,
+    RetryLoop,
     Row,
     Sample,
     Section,
@@ -49,6 +51,16 @@ MIN_FINDING_FAILURES: Final[int] = 2
 
 #: 队列行内 sparkline 的回溯天数。
 FINDING_SIGNAL_DAYS: Final[int] = 21
+
+#: 重试链上限与入选门槛。4 次以下算不上「链」，噪声占比过高。
+MAX_RETRY_LOOPS: Final[int] = 80
+MIN_RETRY_TRIES: Final[int] = 4
+
+#: 类别画像的最小样本量。低于此值的失败率是噪声，不是信号。
+MIN_GROUP_RUNS: Final[int] = 100
+
+#: 每个类别展示的高频程序数。
+GROUP_TOP_PROGRAMS: Final[int] = 5
 
 #: 耗时直方图的桶边界（秒）。边界按对数量级选取，覆盖亚秒到分钟级。
 #: 最后一段为开区间，避免长尾把整张图压平。
@@ -103,11 +115,16 @@ def _fetch_samples(
     values: tuple[Any, ...],
     order_by: str,
     known_columns: frozenset[str],
+    dedupe: bool = True,
 ) -> tuple[tuple[Sample, ...], str]:
     """取一个聚合行对应的命令原文样本。
 
     列名来自本模块的封闭配置并对照 `DESCRIBE commands` 校验，值一律参数绑定，
-    因此没有注入面。同一条命令原文只保留一次 —— 重复原文对判断没有增量。
+    因此没有注入面。
+
+    `dedupe` 默认按命令原文去重 —— 聚合行里重复原文对判断没有增量。
+    重试链必须传 `dedupe=False`：那里「同一条命令重复出现」正是要看的东西，
+    去重会把 33 次尝试压成 1 行。
     """
     conditions = [base_filter]
     params: list[Any] = []
@@ -133,9 +150,10 @@ LIMIT {SAMPLES_PER_ROW * 6}
     samples: list[Sample] = []
     for row in rows:
         command = str(row[0])
-        if command in seen:
-            continue
-        seen.add(command)
+        if dedupe:
+            if command in seen:
+                continue
+            seen.add(command)
         samples.append(
             Sample(
                 command=command,
@@ -218,6 +236,13 @@ _FAILURE_ORDER: Final[str] = "started_at DESC NULLS LAST"
 #: 耗时线的下钻：按耗时倒序，先看最贵的那一次。
 _DURATION_ORDER: Final[str] = "duration_s DESC NULLS LAST"
 _FAILED_ONLY: Final[str] = "status = 'failed'"
+
+#: 可以当「这条命令花了多久」求和的耗时条件。
+#: `DURATION_GUARD` 只排除 batch_shared / unknown，**仍然放过 turn_delta** ——
+#: 后者是相邻消息时间戳差值，含模型思考与用户离开的时间（见 report/scope.py）。
+#: 把它累加进「花在同一件事上的时间」会凭空放大若干倍，所以必须再叠 EXACT。
+#: 与 `_duration_track` 的 guard 同构，两处口径必须一致。
+_TRUSTED_DURATION: Final[str] = f"{DURATION_GUARD.lstrip()} AND {EXACT.sql_filter}"
 
 
 def _failure_track(conn: duckdb.DuckDBPyConnection, known: frozenset[str]) -> Track:
@@ -594,6 +619,140 @@ def _findings(
     return tuple(findings)
 
 
+def _retry_loops_total(conn: duckdb.DuckDBPyConnection) -> int:
+    """未截断的重试链条数（与 `_retry_loops` 同口径，去掉 LIMIT）。"""
+    row = conn.execute(
+        f"""
+        SELECT count(*) FROM (
+            SELECT session_id, template_id, agent
+            FROM commands
+            WHERE template_id IS NOT NULL AND session_id IS NOT NULL
+            GROUP BY 1, 2, 3
+            HAVING count(*) >= {MIN_RETRY_TRIES}
+        )
+        """
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _retry_loops(
+    conn: duckdb.DuckDBPyConnection, known: frozenset[str]
+) -> tuple[RetryLoop, ...]:
+    """重试链：session_id × template_id × agent。
+
+    唯一用到 `session_id` 的聚合。别处都按模板或 agent 汇总，
+    于是「同一次会话里把同一条命令重来了 165 遍」这个事实在别处不可见。
+
+    排序按失败次数优先、再按次数：全是成功的高频重跑（逐段 `sed -n` 读文件）
+    通常是正常工作方式，而失败占多数的长链才是卡死的候选证据。
+    """
+    rows = conn.execute(
+        f"""
+        SELECT session_id, template_id, agent,
+               count(*) AS tries,
+               sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+               round(sum(CASE WHEN {_TRUSTED_DURATION}
+                              THEN COALESCE(duration_s, 0) ELSE 0 END), 1) AS wasted_s,
+               min(started_at) AS first_seen,
+               max(started_at) AS last_seen,
+               first(template ORDER BY started_at NULLS LAST, call_id) AS template,
+               first(project  ORDER BY started_at NULLS LAST, call_id) AS project
+        FROM commands
+        WHERE template_id IS NOT NULL AND session_id IS NOT NULL
+        GROUP BY 1, 2, 3
+        HAVING count(*) >= {MIN_RETRY_TRIES}
+        ORDER BY failures DESC, tries DESC, session_id, template_id
+        LIMIT {MAX_RETRY_LOOPS}
+        """
+    ).fetchall()
+
+    loops: list[RetryLoop] = []
+    for (
+        sid, tid, agent, tries, failures, wasted, first_seen, last_seen, template, project
+    ) in rows:
+        samples, drill_sql = _fetch_samples(
+            conn,
+            base_filter="template_id IS NOT NULL",
+            keys=("session_id", "template_id", "agent"),
+            values=(sid, tid, agent),
+            order_by="started_at ASC NULLS LAST",
+            known_columns=known,
+            # 重试链的样本必须保留重复原文：33 次同样的 `npm run <*>` 就是证据本身。
+            dedupe=False,
+        )
+        loops.append(
+            RetryLoop(
+                loop_id=f"{sid}:{tid}:{agent}",
+                session_id=str(sid),
+                agent=str(agent),
+                project=str(project or ""),
+                template=str(template or ""),
+                template_id=str(tid),
+                tries=int(tries),
+                failures=int(failures),
+                wasted_s=float(wasted or 0.0),
+                first_seen=str(first_seen) if first_seen else None,
+                last_seen=str(last_seen) if last_seen else None,
+                samples=samples,
+                drill_sql=drill_sql,
+            )
+        )
+    return tuple(loops)
+
+
+def _group_profiles(
+    conn: duckdb.DuckDBPyConnection, known: frozenset[str]
+) -> tuple[GroupProfile, ...]:
+    """command_group × 失败率。
+
+    回答「失败集中在哪类动作上」。按 template 排的队列是按**绝对**失败数排的，
+    体量小但失败率高的类别（本机 build 23.9%）会被体量大的类别淹没。
+    只收录 >= MIN_GROUP_RUNS 的类别：样本太小的失败率没有意义。
+    """
+    rows = conn.execute(
+        f"""
+        SELECT COALESCE(command_group, 'unknown') AS grp,
+               count(*) AS runs,
+               sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+               round(sum(CASE WHEN {_TRUSTED_DURATION}
+                              THEN COALESCE(duration_s, 0) ELSE 0 END), 1) AS duration_s
+        FROM commands
+        GROUP BY 1
+        HAVING count(*) >= {MIN_GROUP_RUNS}
+        ORDER BY failures * 1.0 / count(*) DESC, runs DESC
+        """
+    ).fetchall()
+
+    profiles: list[GroupProfile] = []
+    for grp, runs, failures, duration in rows:
+        programs = conn.execute(
+            f"""SELECT program, count(*) AS n FROM commands
+                WHERE COALESCE(command_group, 'unknown') = ? AND program IS NOT NULL
+                GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT {GROUP_TOP_PROGRAMS}""",
+            [grp],
+        ).fetchall()
+        _, drill_sql = _fetch_samples(
+            conn,
+            base_filter="status = 'failed'",
+            keys=("command_group",),
+            values=(grp if grp != "unknown" else None,),
+            order_by=_FAILURE_ORDER,
+            known_columns=known,
+        )
+        profiles.append(
+            GroupProfile(
+                group=str(grp),
+                runs=int(runs),
+                failures=int(failures),
+                failure_pct=round(100.0 * int(failures) / int(runs), 1),
+                duration_s=float(duration or 0.0),
+                top_programs=tuple((str(p), int(n)) for p, n in programs),
+                drill_sql=drill_sql,
+            )
+        )
+    return tuple(profiles)
+
+
 def _dashboard(conn: duckdb.DuckDBPyConnection) -> Dashboard:
     """收集工作台概览；所有信号均由 commands 表实时聚合，不填充虚构时间点。"""
     timeline_rows = conn.execute(
@@ -665,6 +824,9 @@ def collect_payload(
         dashboard=_dashboard(conn),
         findings_total=_findings_total(conn),
         findings=_findings(conn, known),
+        retry_loops_total=_retry_loops_total(conn),
+        retry_loops=_retry_loops(conn, known),
+        group_profiles=_group_profiles(conn, known),
         tracks=(_failure_track(conn, known), _duration_track(conn, known)),
         candidates=candidates,
         candidate_note=candidate_note,

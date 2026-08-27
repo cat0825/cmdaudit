@@ -119,6 +119,15 @@ typecheck + `shell.html` 同步校验）。**别用系统装的 ruff/mypy/pytest
 有几笔口径修正正在分批落地（见 issue #6 / #12 / #13 / #17 / #30），期间 README
 数字与最新代码可能短暂不一致 —— 以合并后的重跑结果为准。
 
+### `DURATION_GUARD` 单用不足以求和耗时
+
+它是**黑名单**（只排除 `batch_shared` / `unknown` / NULL / 截断），**放过 `turn_delta`**。
+而 `turn_delta` 是相邻消息时间戳差值，含模型思考与用户离开的时间（`report/scope.py:26`）。
+
+所以任何「累计花了多久」的求和都必须再叠 `EXACT.sql_filter`。少叠这一层，
+本机快照上重试耗时合计会从 41,071 s 虚报成 199,463 s（4.9×）。
+`viz/collect.py` 把这个组合固化成 `_TRUSTED_DURATION`，新增求和一律用它，不要现拼。
+
 ---
 
 ## 5. 验证基线

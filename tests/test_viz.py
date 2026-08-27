@@ -20,6 +20,9 @@ from cmdaudit.viz.build import build_viz
 from cmdaudit.viz.collect import (
     MAX_CANDIDATES,
     MAX_FINDINGS,
+    MAX_RETRY_LOOPS,
+    MIN_GROUP_RUNS,
+    MIN_RETRY_TRIES,
     SAMPLES_PER_ROW,
     UnknownColumn,
     _fetch_samples,
@@ -494,3 +497,285 @@ def test_findings_total_and_kinds_are_not_truncated(tmp_path: Path) -> None:
     by_kind = dict(payload.dashboard.failures_by_kind)
     assert set(by_kind) == set(kinds)
     assert sum(by_kind.values()) == 2 * (MAX_FINDINGS + 10)
+
+
+def _seed(db_path: Path, rows: list[tuple]) -> None:
+    """把整批行写进一个干净的 commands 表。"""
+    from cmdaudit.store import SCHEMA
+
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(SCHEMA)
+        conn.execute("DELETE FROM commands")
+        conn.executemany(
+            "INSERT INTO commands VALUES (" + ", ".join("?" for _ in range(27)) + ")",
+            rows,
+        )
+    finally:
+        conn.close()
+
+
+def _cmd_row(
+    *,
+    call_id: int,
+    session: str,
+    command: str,
+    template_id: str,
+    status: str,
+    group: str = "pkg",
+    duration: float | None = None,
+    source: str = "self_reported",
+) -> tuple:
+    return (
+        session, "codex", "p", call_id, 0, f"2026-08-{(call_id % 27) + 1:02d}",
+        "exec_command", command, None, "cmd", duration, source, False,
+        1 if status == "failed" else 0, status, "exit_code",
+        "build" if status == "failed" else None, "snippet", "npm", "npm", "run",
+        group, True, command, command, template_id, False,
+    )
+
+
+def test_retry_loop_samples_keep_duplicate_command_text(tmp_path: Path) -> None:
+    """重试链的样本**不能**按原文去重。
+
+    去重是其它聚合行的正确行为，但重试链的定义就是「同一条命令重复执行」——
+    去重会把 6 次尝试压成 1 行，整个视图的证据随之消失。
+    """
+    db_path = tmp_path / "commands.duckdb"
+    _seed(
+        db_path,
+        [
+            _cmd_row(
+                call_id=i,
+                session="sess-a",
+                command="npm run build",
+                template_id="tid-loop",
+                status="failed",
+            )
+            for i in range(6)
+        ],
+    )
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    assert len(payload.retry_loops) == 1
+    loop = payload.retry_loops[0]
+    assert loop.tries == 6
+    assert loop.failures == 6
+    # 6 次同样的原文必须全部留在样本里（受 SAMPLES_PER_ROW 上限约束）。
+    assert len(loop.samples) == SAMPLES_PER_ROW
+    assert {sample.command for sample in loop.samples} == {"npm run build"}
+
+
+def test_retry_loops_do_not_span_sessions(tmp_path: Path) -> None:
+    """重试链按 session 切分：跨会话重跑同一命令不是一次卡死。"""
+    db_path = tmp_path / "commands.duckdb"
+    rows = [
+        _cmd_row(
+            call_id=i,
+            session=f"sess-{i % 2}",
+            command="npm run build",
+            template_id="tid-loop",
+            status="failed",
+        )
+        for i in range(8)
+    ]
+    _seed(db_path, rows)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    # 8 次分摊到两个会话 → 两条各 4 次的链，而不是一条 8 次的。
+    assert len(payload.retry_loops) == 2
+    assert {loop.tries for loop in payload.retry_loops} == {4}
+    assert {loop.session_id for loop in payload.retry_loops} == {"sess-0", "sess-1"}
+
+
+def test_retry_loops_total_is_not_truncated(tmp_path: Path) -> None:
+    """>MAX_RETRY_LOOPS 条链时 KPI 用未截断总数，否则页面静默少报。"""
+    db_path = tmp_path / "commands.duckdb"
+    rows: list[tuple] = []
+    count = MAX_RETRY_LOOPS + 5
+    for chain in range(count):
+        for attempt in range(MIN_RETRY_TRIES):
+            rows.append(
+                _cmd_row(
+                    call_id=chain * MIN_RETRY_TRIES + attempt,
+                    session=f"sess-{chain}",
+                    command=f"npm run build-{chain}",
+                    template_id=f"tid-{chain}",
+                    status="failed",
+                )
+            )
+    _seed(db_path, rows)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    assert payload.retry_loops_total == count
+    assert len(payload.retry_loops) == MAX_RETRY_LOOPS
+
+
+def test_retry_loops_need_a_minimum_number_of_tries(tmp_path: Path) -> None:
+    """低于 MIN_RETRY_TRIES 的重复不算链：两次重跑是事件，不是循环。"""
+    db_path = tmp_path / "commands.duckdb"
+    _seed(
+        db_path,
+        [
+            _cmd_row(
+                call_id=i,
+                session="sess-a",
+                command="npm run build",
+                template_id="tid-short",
+                status="failed",
+            )
+            for i in range(MIN_RETRY_TRIES - 1)
+        ],
+    )
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    assert payload.retry_loops == ()
+    assert payload.retry_loops_total == 0
+
+
+def test_retry_loop_wasted_time_only_counts_trusted_duration(tmp_path: Path) -> None:
+    """`wasted_s` 只累加 DURATION_GUARD 口径内的耗时，是下界不是估算。"""
+    db_path = tmp_path / "commands.duckdb"
+    rows = [
+        # 可信：self_reported 且未截断。
+        _cmd_row(
+            call_id=i,
+            session="sess-a",
+            command="npm run build",
+            template_id="tid-loop",
+            status="failed",
+            duration=2.0,
+            source="self_reported",
+        )
+        for i in range(4)
+    ]
+    # 不可信来源的耗时必须被排除，否则 wasted_s 会把推测值当事实。
+    rows.append(
+        _cmd_row(
+            call_id=99,
+            session="sess-a",
+            command="npm run build",
+            template_id="tid-loop",
+            status="failed",
+            duration=500.0,
+            source="inferred",
+        )
+    )
+    _seed(db_path, rows)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    loop = payload.retry_loops[0]
+    assert loop.tries == 5
+    # 4 × 2.0 秒；那条 500 秒的 inferred 不进账。
+    assert loop.wasted_s == pytest.approx(8.0)
+
+
+def test_group_profiles_drop_small_samples(tmp_path: Path) -> None:
+    """低于 MIN_GROUP_RUNS 的类别不出现：小样本失败率是噪声不是信号。"""
+    db_path = tmp_path / "commands.duckdb"
+    rows: list[tuple] = []
+    # 达标类别：MIN_GROUP_RUNS 条，其中四分之一失败。
+    for i in range(MIN_GROUP_RUNS):
+        rows.append(
+            _cmd_row(
+                call_id=i,
+                session="sess-a",
+                command=f"npm run x-{i}",
+                template_id=f"tid-{i}",
+                status="failed" if i % 4 == 0 else "ok",
+                group="pkg",
+            )
+        )
+    # 不达标类别：一条全失败，失败率 100% —— 正是必须被门槛挡掉的假信号。
+    rows.append(
+        _cmd_row(
+            call_id=9000,
+            session="sess-a",
+            command="cmake --build .",
+            template_id="tid-tiny",
+            status="failed",
+            group="build",
+        )
+    )
+    _seed(db_path, rows)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    groups = {profile.group: profile for profile in payload.group_profiles}
+    assert "build" not in groups
+    assert groups["pkg"].runs == MIN_GROUP_RUNS
+    assert groups["pkg"].failure_pct == pytest.approx(25.0)
+
+
+def test_group_profiles_are_sorted_by_failure_rate(tmp_path: Path) -> None:
+    """按失败率降序：本视图的存在意义就是让小体量高失败率的类别不被体量淹没。"""
+    db_path = tmp_path / "commands.duckdb"
+    rows: list[tuple] = []
+    # 大体量低失败率。
+    for i in range(4 * MIN_GROUP_RUNS):
+        rows.append(
+            _cmd_row(
+                call_id=i,
+                session="sess-a",
+                command=f"rg pattern-{i}",
+                template_id=f"tid-read-{i}",
+                status="failed" if i % 4 == 0 else "ok",
+                group="search_read",
+            )
+        )
+    # 小体量高失败率:绝对失败数远少于上面(50 < 100),但失败率高一倍(50% > 25%)。
+    for i in range(MIN_GROUP_RUNS):
+        rows.append(
+            _cmd_row(
+                call_id=10_000 + i,
+                session="sess-a",
+                command=f"cmake --build {i}",
+                template_id=f"tid-build-{i}",
+                status="failed" if i % 2 == 0 else "ok",
+                group="build",
+            )
+        )
+    _seed(db_path, rows)
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        payload = collect_payload(conn, source_db=str(db_path), generated_at="t")
+    finally:
+        conn.close()
+
+    ordered = [profile.group for profile in payload.group_profiles]
+    assert ordered[0] == "build", ordered
+    rates = [profile.failure_pct for profile in payload.group_profiles]
+    assert rates == sorted(rates, reverse=True)
+    # 绝对失败数是反向的 —— 这正是不能只按失败数排序的证据。
+    by_group = {profile.group: profile for profile in payload.group_profiles}
+    assert by_group["search_read"].failures > by_group["build"].failures
